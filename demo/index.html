@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web AI Playground — WebNN · WebGPU · WASM on Transformers.js 4.3.1</title>
+<meta name="description" content="Conference demo: run image classification, Whisper speech-to-text and a small LLM in the browser on WebNN, WebGPU or WASM, with timings side by side. Rebuilt Oct 2026 on Transformers.js 4.3.1.">
+<meta property="og:title" content="Web AI Playground — WebNN · WebGPU · WASM">
+<meta property="og:description" content="Browser-based AI demo for 'The Ultimate Guide to Browser-Based AI' by Maxim Salnikov. Transformers.js 4.3.1 + ONNX Runtime Web.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<meta name="theme-color" content="#0b1020">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">◆</span>
+    <div>
+      <h1>Web AI Playground</h1>
+      <p class="tag">WebNN · WebGPU · WASM — one model, three backends, numbers side by side</p>
+    </div>
+  </div>
+  <div class="status-pills" aria-live="polite">
+    <span id="pill-online" class="pill">online</span>
+    <span id="pill-offline-ready" class="pill muted" title="App shell + libraries precached by the service worker">offline: checking…</span>
+    <button id="theme-btn" class="btn ghost small" type="button" aria-label="Toggle light/dark">☾ / ☀</button>
+  </div>
+</header>
+
+<main>
+<section class="card" id="caps">
+  <div class="card-head">
+    <h2>1 · What this browser can do</h2>
+    <button id="recheck-btn" class="btn ghost small" type="button">Re-check</button>
+  </div>
+  <div class="caps-grid" id="caps-grid">
+    <div class="cap" id="cap-webnn"><div class="cap-name">WebNN</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+    <div class="cap" id="cap-webgpu"><div class="cap-name">WebGPU</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+    <div class="cap" id="cap-wasm"><div class="cap-name">WebAssembly</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+    <div class="cap" id="cap-isolation"><div class="cap-name">Cross-origin isolation</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+    <div class="cap" id="cap-storage"><div class="cap-name">Storage</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+    <div class="cap" id="cap-builtin"><div class="cap-name">Built-in AI (Prompt API)</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+  </div>
+</section>
+
+<section class="card" id="device">
+  <div class="card-head"><h2>2 · Pick the backend</h2><span class="hint">Passed to <code>pipeline(task, model, { device, dtype })</code></span></div>
+  <div class="device-row" role="radiogroup" aria-label="Backend">
+    <label class="chip"><input type="radio" name="device" value="auto" checked> Auto</label>
+    <label class="chip"><input type="radio" name="device" value="webnn"> WebNN</label>
+    <label class="chip"><input type="radio" name="device" value="webgpu"> WebGPU</label>
+    <label class="chip"><input type="radio" name="device" value="wasm"> WASM</label>
+    <span class="sub" id="webnn-sub">
+      <label>WebNN device
+        <select id="webnn-device">
+          <option value="npu">NPU</option>
+          <option value="gpu">GPU</option>
+          <option value="cpu">CPU</option>
+          <option value="default">default</option>
+        </select>
+      </label>
+    </span>
+    <label class="sub">dtype
+      <select id="dtype">
+        <option value="auto">auto</option>
+        <option value="fp32">fp32</option>
+        <option value="fp16">fp16</option>
+        <option value="q8">q8</option>
+        <option value="q4">q4</option>
+        <option value="q4f16">q4f16</option>
+      </select>
+    </label>
+    <label class="sub">runs <input id="runs" type="number" min="1" max="50" value="5"></label>
+  </div>
+  <p class="resolved" id="resolved">Resolving…</p>
+</section>
+
+<div class="grid-2">
+<section class="card task" id="task-image">
+  <div class="card-head"><h2>3a · Image classification</h2>
+    <select id="image-model" aria-label="Model">
+      <option value="Xenova/resnet-50">Xenova/resnet-50 (ImageNet, 25.8 MB q8)</option>
+      <option value="webnn/mobilenet-v2">webnn/mobilenet-v2 (7 MB fp16, WebNN org)</option>
+    </select>
+  </div>
+  <div class="samples" id="image-samples">
+    <button type="button" class="sample" data-src="samples/cats.jpg"><img src="samples/cats.jpg" alt="two cats on a sofa"></button>
+    <button type="button" class="sample" data-src="samples/corgi.jpg"><img src="samples/corgi.jpg" alt="a corgi"></button>
+    <button type="button" class="sample" data-src="samples/coffee.jpg"><img src="samples/coffee.jpg" alt="a cup of coffee"></button>
+    <button type="button" class="sample" data-src="samples/butterfly.jpg"><img src="samples/butterfly.jpg" alt="a butterfly"></button>
+    <label class="sample upload">⬆ upload<input type="file" id="image-upload" accept="image/*" hidden></label>
+  </div>
+  <div class="preview"><img id="image-preview" src="samples/cats.jpg" alt="selected image"></div>
+  <div class="actions">
+    <button id="image-run" class="btn primary" type="button">Classify</button>
+    <span class="task-status" id="image-status"></span>
+  </div>
+  <div class="progress" id="image-progress" hidden><div class="bar"><div class="fill"></div></div><div class="ptext"></div></div>
+  <ol class="results" id="image-results"></ol>
+  <dl class="timings" id="image-timings"></dl>
+</section>
+
+<section class="card task" id="task-speech">
+  <div class="card-head"><h2>3b · Speech to text (Whisper)</h2>
+    <select id="speech-model" aria-label="Model">
+      <option value="onnx-community/whisper-tiny.en">onnx-community/whisper-tiny.en (41 MB q8)</option>
+      <option value="onnx-community/whisper-tiny">onnx-community/whisper-tiny (multilingual, 41 MB q8)</option>
+    </select>
+  </div>
+  <div class="samples">
+    <button type="button" class="sample text" id="speech-sample" data-src="samples/jfk.mp3">▶ sample: JFK, 11 s</button>
+    <button type="button" class="sample text" id="mic-btn">🎙 record 5 s</button>
+    <label class="sample text">⬆ audio file<input type="file" id="audio-upload" accept="audio/*" hidden></label>
+  </div>
+  <audio id="audio-player" controls src="samples/jfk.mp3"></audio>
+  <div class="actions">
+    <button id="speech-run" class="btn primary" type="button">Transcribe</button>
+    <span class="task-status" id="speech-status"></span>
+  </div>
+  <div class="progress" id="speech-progress" hidden><div class="bar"><div class="fill"></div></div><div class="ptext"></div></div>
+  <blockquote class="transcript" id="speech-result"></blockquote>
+  <dl class="timings" id="speech-timings"></dl>
+</section>
+</div>
+
+<section class="card task" id="task-prompt">
+  <div class="card-head"><h2>3c · Prompt API (built-in model) → fallback to Transformers.js</h2><span class="hint" id="prompt-mode">detecting…</span></div>
+  <div class="prompt-row">
+    <textarea id="prompt-input" rows="2">Explain in two sentences why running AI in the browser is good for privacy.</textarea>
+    <div class="prompt-btns">
+      <button id="prompt-run" class="btn primary" type="button">Generate</button>
+      <select id="prompt-model" aria-label="Fallback model">
+        <option value="HuggingFaceTB/SmolLM2-135M-Instruct">SmolLM2-135M-Instruct (≈120–140 MB)</option>
+      </select>
+    </div>
+  </div>
+  <div class="progress" id="prompt-progress" hidden><div class="bar"><div class="fill"></div></div><div class="ptext"></div></div>
+  <pre class="gen-out" id="prompt-output" aria-live="polite"></pre>
+  <dl class="timings" id="prompt-timings"></dl>
+</section>
+
+<section class="card" id="bench">
+  <div class="card-head"><h2>4 · Benchmark board</h2>
+    <div><button id="bench-copy" class="btn ghost small" type="button">Copy as Markdown</button> <button id="bench-clear" class="btn ghost small" type="button">Clear</button></div>
+  </div>
+  <div class="table-wrap">
+  <table id="bench-table">
+    <thead><tr><th>Task</th><th>Model</th><th>Backend</th><th>dtype</th><th>Download</th><th>Load</th><th>1st run</th><th>Avg (n)</th><th>tok/s</th><th>Result</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+  <p class="hint">Load = pipeline construction incl. session creation (cached files after first visit). 1st run includes backend warm-up/compilation. Avg = mean of n timed runs after the first.</p>
+</section>
+
+<section class="card" id="offline">
+  <div class="card-head"><h2>5 · Offline &amp; caches</h2>
+    <div><button id="cache-refresh" class="btn ghost small" type="button">Refresh</button> <button id="cache-clear" class="btn danger small" type="button">Clear caches</button></div>
+  </div>
+  <div id="cache-list" class="cache-list">…</div>
+</section>
+
+<section class="card" id="log-card">
+  <details><summary>Console log</summary><pre id="log" class="log"></pre></details>
+</section>
+</main>
+
+<footer>
+  <p><strong>The Ultimate Guide to Browser-Based AI: Privacy-First, Offline-Ready, and Fully Future-Proof</strong> — Maxim Salnikov</p>
+  <p>Rebuilt Oct 2026 on <a href="https://github.com/huggingface/transformers.js" rel="noopener">Transformers.js v4.3.1</a> (ONNX Runtime Web 1.31.0-dev.20260914) · <a href="https://github.com/vibeprogrammer/ultimate-guide-browser-ai" id="source-link" rel="noopener">Source on GitHub</a> · <a href="https://webnn.io" rel="noopener">webnn.io</a> · <a href="https://developer.chrome.com/docs/ai/built-in-apis" rel="noopener">Built-in AI APIs</a></p>
+  <p class="tiny">Samples: cats, corgi, butterfly and jfk.mp3 from the Transformers.js docs dataset; coffee cup photo by Julius Schorzman (Wikimedia Commons, CC BY-SA 2.0). Models stream from huggingface.co and are cached in your browser.</p>
+</footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>
