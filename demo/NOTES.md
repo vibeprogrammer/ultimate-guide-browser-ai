@@ -1,4 +1,4 @@
-# Web AI Playground — build notes (16 Oct 2026)
+# Web AI Playground — build notes (demo helper, 16 Oct 2026)
 Times UTC.
 
 ## Library facts (verified 16 Oct 2026, 17:45Z)
@@ -26,12 +26,12 @@ Times UTC.
 - Samples: cats.jpg, corgi.jpg, butterfly.jpg from the Xenova/transformers.js-docs dataset (HF); coffee.jpg = Wikimedia Commons "A small cup of coffee.JPG" (Julius Schorzman, CC BY-SA 2.0; attributed in the footer); jfk.wav (11 s, resampled to 16 kHz mono, 352 KB) from the same HF docs dataset.
 
 ## Build decisions
-- Static site, no build step: index.html, styles.css, app.js (UI, feature detection, worker orchestration, benchmark board in localStorage, caches panel), inference-worker.js (Transformers.js pipelines in a module Web Worker), sw.js (service worker), _headers (COOP/COEP — not honoured by the current host, see below), manifest.webmanifest, icon.svg, samples/.
-- The worker file is named `inference-worker.js` on purpose: some static hosts treat a top-level `worker.js` as a Cloudflare Worker entry module.
-- Transformers.js 4.3.1 is imported from `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1` (the README's URL, = dist/transformers.min.js, ORT bundled). The service worker precaches that CDN URL at install and runtime-caches cdn.jsdelivr.net (ORT .mjs/.wasm) cache-first; Transformers.js also caches the ORT wasm + model files itself in 'transformers-cache'.
-- Published: https://webai-playground.sites.tab.bot/ (static hosting). The host does NOT send COOP/COEP (the `_headers` file is ignored) → `crossOriginIsolated` is false → ORT runs WASM single-threaded; the capability panel states this. SIMD and JSPI are available.
+- Static site, no build step: index.html, styles.css, app.js (UI, feature detection, worker orchestration, benchmark board in localStorage, caches panel), inference-worker.js (Transformers.js pipelines in a module Web Worker), sw.js (service worker), _headers (COOP/COEP — NOT honoured by the publish host, see below), tab-site.json {kind: static}, manifest.webmanifest, icon.svg, samples/.
+- The worker file is named `inference-worker.js` on purpose: a file named `worker.js` makes the publish capability treat the folder as a Cloudflare Worker entry module and the control plane answers HTTP 502 (bisected 16 Oct 2026, 17:57Z).
+- Transformers.js 4.3.1 is imported from `https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1` (the README's URL, = dist/transformers.min.js, ORT bundled). A byte-identical vendored copy is kept at ../demo-vendor/transformers-4.3.1.min.js (not in the published folder). The service worker precaches that CDN URL at install and runtime-caches cdn.jsdelivr.net (ORT .mjs/.wasm) cache-first; Transformers.js also caches the ORT wasm + model files itself in 'transformers-cache'.
+- Published: https://webai-playground.sites.tab.bot/ (publish-cli site.publish, slug webai-playground, target worker/static). The host does NOT send COOP/COEP (the `_headers` file is ignored) → `crossOriginIsolated` is false → ORT runs WASM single-threaded; the capability panel states this. SIMD and JSPI are available.
 
-## Test results (headless Chromium 156.0.8078.4 via local playwright-core, --use-angle=swiftshader)
+## Test results (headless Chromium 156.0.8078.4 via local playwright-core, --use-angle=swiftshader; test-driver.cjs in demo-screenshots/)
 Published URL, 18:00Z, 0 console errors on load:
 - Capability panel: WebNN not available (`navigator.ml` undefined, also tried `--enable-features=WebMachineLearningNeuralNetwork`: Chrome 156 headless on Linux still exposes no navigator.ml → UNVERIFIED flag path); WebGPU: software fallback adapter (vendor google, arch swiftshader, shader-f16 no, subgroups yes); WASM SIMD yes, threads no (not isolated), JSPI yes; storage quota ≈10 GB; Prompt API: `LanguageModel` exists in Chrome 156 but availability() → "unavailable" (console: "service is not running") → card 3c falls back to Transformers.js as designed. Auto resolved to wasm with the reason shown.
 - Image classification WASM q8 resnet-50 (24.7 MB): cats → "tiger cat 89.2%"; corgi → "Pembroke Welsh corgi 82.3%"; coffee → "espresso 54.9%, cup 21.6%". load 2.97 s, 1st run 917 ms, avg of 5 = 256 ms (local server run: 186 ms).
@@ -43,10 +43,17 @@ Published URL, 18:00Z, 0 console errors on load:
 - Offline (Playwright context.setOffline(true) after a full run, then reload): the app shell loads from the SW (title, capability panel, "OFFLINE" pill, "offline-ready (12 shell files cached)"), the worker boots with Transformers.js + ORT from cache. BUT running resnet-50 again offline fails in ~60 ms with "Failed to fetch" — UNVERIFIED which request: the SW now falls back to any cached copy for huggingface.co /resolve/ and API URLs, and the image is passed as a Blob, and it still fails; it may be Playwright's offline emulation of worker fetches or a Transformers.js 4 revalidation path. Needs one DevTools session (Network panel, offline) on a real machine — Maxim should check this before relying on offline inference on stage; the shell/library offline path is verified.
 
 ## Unverified / for Maxim
-- WebNN on NPU/GPU/CPU: cannot be verified on the test machine (no navigator.ml in headless Linux Chromium 156, no NPU). The device strings and EP mapping are verified from source; whether resnet-50 / whisper / SmolLM2 run on the WebNN EP must be tried on a Windows/macOS machine with the flag.
+- WebNN on NPU/GPU/CPU: cannot be verified on this box (no navigator.ml in headless Linux Chromium 156, no NPU). The device strings and EP mapping are verified from source; whether resnet-50 / whisper / SmolLM2 run on the WebNN EP must be tried on a Windows/macOS machine with the flag.
 - Whether plain 'webnn' = deviceType cpu surprises the audience: say it on the slide.
 - Offline inference after first load (see above). Mic capture and file upload were not exercised headless.
 - Source link in the footer is a placeholder (#); Maxim decides the repo.
 
-## Offline fix, 16 Oct 2026 18:12Z — offline re-inference now verified
+## Lead's fix, 16 Oct 2026 18:12Z — offline re-inference now verified
 Cause: `pipeline()` requests optional files that 404 online (e.g. `Xenova/resnet-50/resolve/main/tokenizer_config.json`); a 404 is never cached, so offline the fetch threw "Failed to fetch" and the library aborted. Fix in sw.js: for huggingface.co `/resolve/` requests with no cached copy, answer a synthetic 404 instead of rejecting (cache names bumped to v6). Republished 18:10Z. Test (headless Chromium 156, published URL, `context.setOffline(true)` + reload): resnet-50 q8 loaded from cache in 0.9 s and classified cats.jpg → tiger cat 89.2 % while offline. The only failed requests offline are the optional tokenizer_config.json ones, now answered 404 by the SW.
+
+## Redesign (16 Oct 2026, 21:40 Oslo) — "Web AI Bench"
+- Renamed from "Web AI Playground" to **Web AI Bench** (title, manifest, og tags). All element ids and app.js hooks are unchanged; only styles.css, index.html markup, manifest, icon and four lines of app.js changed (theme toggle respects prefers-color-scheme; capability panel opens by default at ≥768 px; emoji-free mic label; shorter offline pill text with the file count in its title).
+- Mobile-first CSS: single column 360–430 px, two columns ≥768, larger type ≥1200 and ≥1800 (projector). No horizontal overflow at 360 (scrollWidth == innerWidth). Every control ≥44 px. Segmented backend control; capability panel is a `<details>` with a six-dot summary row (pure CSS via `:has()`); benchmark rows render as stacked cards <768 px and as a table with a sticky first column ≥768. Safe-area insets, `viewport-fit=cover`, `inputmode=numeric` on runs, `accept` on both uploads.
+- Look: light by default, dark via prefers-color-scheme + toggle; off-white/near-black, 1 px hairlines, 4 px radius, no gradients/shadows/emoji; one cobalt accent for state; green/red/amber only for supported/not/partial. System UI stack for text, ui-monospace for every number, model id and section label (tabular numerals). All text ≥ AA contrast in both themes (measured).
+- Service worker app-shell cache bumped to webai-shell-v9.
+- Known, pre-existing: `webnn/mobilenet-v2` ships only fp16 ONNX, so dtype `auto` on wasm (→ q8) fails with "Could not locate file …model_quantized.onnx"; pick dtype fp16 for it. The UI shows the error.

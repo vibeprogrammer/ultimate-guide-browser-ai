@@ -9,7 +9,9 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // ---------- theme / online pills ----------
 const themeBtn = $('#theme-btn');
 const savedTheme = localStorage.getItem('theme'); if (savedTheme) document.documentElement.dataset.theme = savedTheme;
-themeBtn.onclick = () => { const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = t; localStorage.setItem('theme', t); };
+themeBtn.onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const t = cur === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = t; localStorage.setItem('theme', t); };
+// capability panel: collapsed summary row on phones, expanded on wider screens
+const capsDetails = document.getElementById('caps-details'); if (capsDetails && matchMedia('(min-width: 768px)').matches) capsDetails.open = true;
 function updateOnline() { const p = $('#pill-online'); p.textContent = navigator.onLine ? 'online' : 'OFFLINE'; p.className = 'pill ' + (navigator.onLine ? 'ok' : 'bad'); }
 addEventListener('online', updateOnline); addEventListener('offline', updateOnline); updateOnline();
 
@@ -24,7 +26,7 @@ async function setupSW() {
       const shellName = (await caches.keys()).filter(k => k.startsWith('webai-shell-')).sort().pop();   // whatever shell version the service worker installed
       const c = shellName ? await caches.open(shellName) : null;
       const n = c ? (await c.keys()).length : 0;
-      pill.textContent = n >= 8 ? `offline-ready (${n} shell files cached)` : 'offline: caching shell…';
+      pill.textContent = n >= 8 ? 'offline-ready' : 'offline: caching shell…'; pill.title = n >= 8 ? `${n} app-shell files precached by the service worker` : 'App shell + libraries precached by the service worker';
       pill.className = 'pill ' + (n >= 8 ? 'ok' : 'muted');
       return n >= 8;
     };
@@ -230,7 +232,7 @@ $('#mic-btn').onclick = async () => {
     audioData = await decodeAudio(await blob.arrayBuffer()); audioLabel = 'microphone (5 s)'; $('#audio-player').src = URL.createObjectURL(blob);
     $('#speech-status').textContent = `recorded ${(audioData.length / 16000).toFixed(1)} s`;
   } catch (e) { $('#speech-status').innerHTML = `<span class="err">mic: ${e.message}</span>`; }
-  btn.textContent = '🎙 record 5 s'; btn.disabled = false;
+  btn.textContent = 'Record 5 s'; btn.disabled = false;
 };
 $('#speech-run').onclick = () => runTask('speech');
 

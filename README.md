@@ -11,12 +11,14 @@ Generative and intelligent features are quickly becoming a core part of modern w
 | Folder | What |
 |---|---|
 | [`deck/`](deck/) | The deck (35 slides, PPTX + PDF), the talk track as PDF (slide thumbnail + script per page) and as Markdown |
-| [`demo/`](demo/) | **Web AI Playground** — the rebuilt WebNN demo: Transformers.js 4.3.1, WebNN / WebGPU / WASM switcher, offline-ready |
+| [`demo/`](demo/) | **Web AI Bench** — the rebuilt WebNN demo: Transformers.js 4.3.1, WebNN / WebGPU / WASM switcher, offline-ready, mobile-first |
 | [`docs/`](docs/) | Research with primary sources ([`research.md`](docs/research.md)), the story and slide plan ([`story.md`](docs/story.md)), slide-to-source traceability ([`slides-outline.md`](docs/slides-outline.md)), what changed since the previous deck ([`analysis.md`](docs/analysis.md)), demo [screenshots](docs/screenshots/) |
 
-## The demo: Web AI Playground
+## The demo: Web AI Bench
 
-A static rebuild of my earlier `nextjs-webnn` demo (Next.js, Transformers.js 3.4.2) — no framework, no build step.
+A static rebuild of my earlier `nextjs-webnn` demo (Next.js, Transformers.js 3.4.2) — no framework, no build step. Mobile-first (it is opened from a QR code on phones), light and dark, system fonts only, so it also works offline.
+
+<p><img src="docs/screenshots/mobile-light.png" width="260" alt="Web AI Bench on a phone, light theme"> <img src="docs/screenshots/mobile-dark.png" width="260" alt="Web AI Bench on a phone, dark theme"></p>
 
 - **Device switcher:** Auto · WebNN (NPU / GPU / CPU) · WebGPU · WASM. Auto feature-detects and tells you what it picked and why.
 - **Capability panel:** WebNN contexts, WebGPU adapter (`shader-f16`, subgroups), WASM threads/SIMD, cross-origin isolation, storage, Prompt API availability.

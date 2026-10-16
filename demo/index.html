@@ -1,95 +1,123 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Web AI Playground — WebNN · WebGPU · WASM on Transformers.js 4.3.1</title>
-<meta name="description" content="Conference demo: run image classification, Whisper speech-to-text and a small LLM in the browser on WebNN, WebGPU or WASM, with timings side by side. Rebuilt Oct 2026 on Transformers.js 4.3.1.">
-<meta property="og:title" content="Web AI Playground — WebNN · WebGPU · WASM">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Web AI Bench — WebNN · WebGPU · WASM on Transformers.js 4.3.1</title>
+<meta name="description" content="Run image classification, Whisper speech-to-text and a small LLM in your browser on WebNN, WebGPU or WASM, and compare the timings side by side. Transformers.js 4.3.1 + ONNX Runtime Web. Works offline after the first load.">
+<meta property="og:title" content="Web AI Bench — WebNN · WebGPU · WASM">
 <meta property="og:description" content="Browser-based AI demo for 'The Ultimate Guide to Browser-Based AI' by Maxim Salnikov. Transformers.js 4.3.1 + ONNX Runtime Web.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
-<meta name="theme-color" content="#0b1020">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f4f1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1012">
 </head>
 <body>
 <header class="top">
   <div class="brand">
-    <span class="logo" aria-hidden="true">◆</span>
-    <div>
-      <h1>Web AI Playground</h1>
-      <p class="tag">WebNN · WebGPU · WASM — one model, three backends, numbers side by side</p>
-    </div>
+    <span class="mark" aria-hidden="true"></span>
+    <h1>Web AI Bench</h1>
+    <p class="tag">WebNN · WebGPU · WASM, measured in your browser</p>
   </div>
   <div class="status-pills" aria-live="polite">
     <span id="pill-online" class="pill">online</span>
     <span id="pill-offline-ready" class="pill muted" title="App shell + libraries precached by the service worker">offline: checking…</span>
-    <button id="theme-btn" class="btn ghost small" type="button" aria-label="Toggle light/dark">☾ / ☀</button>
+    <button id="theme-btn" class="btn icon" type="button" aria-label="Toggle light/dark theme" title="Light / dark">
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.75a7.25 7.25 0 0 1 0 14.5z" fill="currentColor"/></svg>
+    </button>
   </div>
 </header>
 
 <main>
-<section class="card" id="caps">
-  <div class="card-head">
-    <h2>1 · What this browser can do</h2>
-    <button id="recheck-btn" class="btn ghost small" type="button">Re-check</button>
-  </div>
-  <div class="caps-grid" id="caps-grid">
-    <div class="cap" id="cap-webnn"><div class="cap-name">WebNN</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-    <div class="cap" id="cap-webgpu"><div class="cap-name">WebGPU</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-    <div class="cap" id="cap-wasm"><div class="cap-name">WebAssembly</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-    <div class="cap" id="cap-isolation"><div class="cap-name">Cross-origin isolation</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-    <div class="cap" id="cap-storage"><div class="cap-name">Storage</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-    <div class="cap" id="cap-builtin"><div class="cap-name">Built-in AI (Prompt API)</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
-  </div>
+<section class="panel" id="caps">
+  <details id="caps-details">
+    <summary>
+      <span class="sec"><span class="num">01</span>Capabilities</span>
+      <span class="caps-summary" aria-hidden="true">
+        <span class="dot" data-sum="webnn">WebNN</span>
+        <span class="dot" data-sum="webgpu">WebGPU</span>
+        <span class="dot" data-sum="wasm">WASM</span>
+        <span class="dot" data-sum="isolation">COI</span>
+        <span class="dot" data-sum="storage">Storage</span>
+        <span class="dot" data-sum="builtin">Prompt API</span>
+      </span>
+      <span class="chev" aria-hidden="true"></span>
+    </summary>
+    <div class="panel-body">
+      <div class="caps-grid" id="caps-grid">
+        <div class="cap" id="cap-webnn"><div class="cap-name">WebNN</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+        <div class="cap" id="cap-webgpu"><div class="cap-name">WebGPU</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+        <div class="cap" id="cap-wasm"><div class="cap-name">WebAssembly</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+        <div class="cap" id="cap-isolation"><div class="cap-name">Cross-origin isolation</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+        <div class="cap" id="cap-storage"><div class="cap-name">Storage</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+        <div class="cap" id="cap-builtin"><div class="cap-name">Built-in AI (Prompt API)</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+      </div>
+      <div class="panel-foot"><button id="recheck-btn" class="btn" type="button">Re-check</button></div>
+    </div>
+  </details>
 </section>
 
-<section class="card" id="device">
-  <div class="card-head"><h2>2 · Pick the backend</h2><span class="hint">Passed to <code>pipeline(task, model, { device, dtype })</code></span></div>
+<section class="panel" id="device">
+  <div class="panel-head">
+    <span class="sec"><span class="num">02</span>Backend</span>
+    <span class="hint">→ <code>pipeline(task, model, { device, dtype })</code></span>
+  </div>
   <div class="device-row" role="radiogroup" aria-label="Backend">
-    <label class="chip"><input type="radio" name="device" value="auto" checked> Auto</label>
-    <label class="chip"><input type="radio" name="device" value="webnn"> WebNN</label>
-    <label class="chip"><input type="radio" name="device" value="webgpu"> WebGPU</label>
-    <label class="chip"><input type="radio" name="device" value="wasm"> WASM</label>
-    <span class="sub" id="webnn-sub">
-      <label>WebNN device
+    <div class="seg">
+      <label class="chip"><input type="radio" name="device" value="auto" checked><span>Auto</span></label>
+      <label class="chip"><input type="radio" name="device" value="webnn"><span>WebNN</span></label>
+      <label class="chip"><input type="radio" name="device" value="webgpu"><span>WebGPU</span></label>
+      <label class="chip"><input type="radio" name="device" value="wasm"><span>WASM</span></label>
+    </div>
+    <div class="fields">
+      <span class="sub field" id="webnn-sub">
+        <label for="webnn-device">WebNN device</label>
         <select id="webnn-device">
           <option value="npu">NPU</option>
           <option value="gpu">GPU</option>
           <option value="cpu">CPU</option>
           <option value="default">default</option>
         </select>
-      </label>
-    </span>
-    <label class="sub">dtype
-      <select id="dtype">
-        <option value="auto">auto</option>
-        <option value="fp32">fp32</option>
-        <option value="fp16">fp16</option>
-        <option value="q8">q8</option>
-        <option value="q4">q4</option>
-        <option value="q4f16">q4f16</option>
-      </select>
-    </label>
-    <label class="sub">runs <input id="runs" type="number" min="1" max="50" value="5"></label>
+      </span>
+      <span class="sub field">
+        <label for="dtype">dtype</label>
+        <select id="dtype">
+          <option value="auto">auto</option>
+          <option value="fp32">fp32</option>
+          <option value="fp16">fp16</option>
+          <option value="q8">q8</option>
+          <option value="q4">q4</option>
+          <option value="q4f16">q4f16</option>
+        </select>
+      </span>
+      <span class="sub field">
+        <label for="runs">timed runs</label>
+        <input id="runs" type="number" inputmode="numeric" min="1" max="50" value="5">
+      </span>
+    </div>
   </div>
   <p class="resolved" id="resolved">Resolving…</p>
 </section>
 
 <div class="grid-2">
-<section class="card task" id="task-image">
-  <div class="card-head"><h2>3a · Image classification</h2>
-    <select id="image-model" aria-label="Model">
-      <option value="Xenova/resnet-50">Xenova/resnet-50 (ImageNet, 25.8 MB q8)</option>
-      <option value="webnn/mobilenet-v2">webnn/mobilenet-v2 (7 MB fp16, WebNN org)</option>
-    </select>
+<section class="panel task" id="task-image">
+  <div class="panel-head">
+    <span class="sec"><span class="num">03a</span>Image classification</span>
   </div>
+  <label class="field wide" for="image-model"><span>Model</span>
+    <select id="image-model" aria-label="Model">
+      <option value="Xenova/resnet-50">Xenova/resnet-50 · 25.8 MB q8</option>
+      <option value="webnn/mobilenet-v2">webnn/mobilenet-v2 · 7 MB fp16</option>
+    </select>
+  </label>
   <div class="samples" id="image-samples">
     <button type="button" class="sample" data-src="samples/cats.jpg"><img src="samples/cats.jpg" alt="two cats on a sofa"></button>
     <button type="button" class="sample" data-src="samples/corgi.jpg"><img src="samples/corgi.jpg" alt="a corgi"></button>
     <button type="button" class="sample" data-src="samples/coffee.jpg"><img src="samples/coffee.jpg" alt="a cup of coffee"></button>
     <button type="button" class="sample" data-src="samples/butterfly.jpg"><img src="samples/butterfly.jpg" alt="a butterfly"></button>
-    <label class="sample upload">⬆ upload<input type="file" id="image-upload" accept="image/*" hidden></label>
+    <label class="sample upload"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M10 14V4m0 0L6 8m4-4 4 4M4 16h12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Upload</span><input type="file" id="image-upload" accept="image/*" hidden></label>
   </div>
   <div class="preview"><img id="image-preview" src="samples/cats.jpg" alt="selected image"></div>
   <div class="actions">
@@ -101,17 +129,20 @@
   <dl class="timings" id="image-timings"></dl>
 </section>
 
-<section class="card task" id="task-speech">
-  <div class="card-head"><h2>3b · Speech to text (Whisper)</h2>
-    <select id="speech-model" aria-label="Model">
-      <option value="onnx-community/whisper-tiny.en">onnx-community/whisper-tiny.en (41 MB q8)</option>
-      <option value="onnx-community/whisper-tiny">onnx-community/whisper-tiny (multilingual, 41 MB q8)</option>
-    </select>
+<section class="panel task" id="task-speech">
+  <div class="panel-head">
+    <span class="sec"><span class="num">03b</span>Speech to text · Whisper</span>
   </div>
+  <label class="field wide" for="speech-model"><span>Model</span>
+    <select id="speech-model" aria-label="Model">
+      <option value="onnx-community/whisper-tiny.en">onnx-community/whisper-tiny.en · 41 MB</option>
+      <option value="onnx-community/whisper-tiny">onnx-community/whisper-tiny · multilingual</option>
+    </select>
+  </label>
   <div class="samples">
-    <button type="button" class="sample text" id="speech-sample" data-src="samples/jfk.mp3">▶ sample: JFK, 11 s</button>
-    <button type="button" class="sample text" id="mic-btn">🎙 record 5 s</button>
-    <label class="sample text">⬆ audio file<input type="file" id="audio-upload" accept="audio/*" hidden></label>
+    <button type="button" class="sample text" id="speech-sample" data-src="samples/jfk.mp3"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M6 4.5v11l9-5.5z" fill="currentColor"/></svg><span>Sample: JFK, 11 s</span></button>
+    <button type="button" class="sample text" id="mic-btn"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><rect x="7" y="2.5" width="6" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Record 5 s</span></button>
+    <label class="sample text"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 14V4m0 0L6 8m4-4 4 4M4 16h12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Audio file</span><input type="file" id="audio-upload" accept="audio/*" hidden></label>
   </div>
   <audio id="audio-player" controls src="samples/jfk.mp3"></audio>
   <div class="actions">
@@ -124,15 +155,20 @@
 </section>
 </div>
 
-<section class="card task" id="task-prompt">
-  <div class="card-head"><h2>3c · Prompt API (built-in model) → fallback to Transformers.js</h2><span class="hint" id="prompt-mode">detecting…</span></div>
+<section class="panel task" id="task-prompt">
+  <div class="panel-head">
+    <span class="sec"><span class="num">03c</span>Prompt API → Transformers.js fallback</span>
+    <span class="hint" id="prompt-mode">detecting…</span>
+  </div>
   <div class="prompt-row">
-    <textarea id="prompt-input" rows="2">Explain in two sentences why running AI in the browser is good for privacy.</textarea>
+    <textarea id="prompt-input" rows="3" aria-label="Prompt">Explain in two sentences why running AI in the browser is good for privacy.</textarea>
     <div class="prompt-btns">
+      <label class="field wide" for="prompt-model"><span>Fallback model</span>
+        <select id="prompt-model" aria-label="Fallback model">
+          <option value="HuggingFaceTB/SmolLM2-135M-Instruct">SmolLM2-135M-Instruct · ≈130 MB</option>
+        </select>
+      </label>
       <button id="prompt-run" class="btn primary" type="button">Generate</button>
-      <select id="prompt-model" aria-label="Fallback model">
-        <option value="HuggingFaceTB/SmolLM2-135M-Instruct">SmolLM2-135M-Instruct (≈120–140 MB)</option>
-      </select>
     </div>
   </div>
   <div class="progress" id="prompt-progress" hidden><div class="bar"><div class="fill"></div></div><div class="ptext"></div></div>
@@ -140,9 +176,10 @@
   <dl class="timings" id="prompt-timings"></dl>
 </section>
 
-<section class="card" id="bench">
-  <div class="card-head"><h2>4 · Benchmark board</h2>
-    <div><button id="bench-copy" class="btn ghost small" type="button">Copy as Markdown</button> <button id="bench-clear" class="btn ghost small" type="button">Clear</button></div>
+<section class="panel" id="bench">
+  <div class="panel-head">
+    <span class="sec"><span class="num">04</span>Benchmark board</span>
+    <div class="btn-row"><button id="bench-copy" class="btn" type="button">Copy as Markdown</button><button id="bench-clear" class="btn" type="button">Clear</button></div>
   </div>
   <div class="table-wrap">
   <table id="bench-table">
@@ -150,24 +187,25 @@
     <tbody></tbody>
   </table>
   </div>
-  <p class="hint">Load = pipeline construction incl. session creation (cached files after first visit). 1st run includes backend warm-up/compilation. Avg = mean of n timed runs after the first.</p>
+  <p class="hint foot">Load = pipeline construction incl. session creation (cached files after first visit). 1st run includes backend warm-up/compilation. Avg = mean of n timed runs after the first.</p>
 </section>
 
-<section class="card" id="offline">
-  <div class="card-head"><h2>5 · Offline &amp; caches</h2>
-    <div><button id="cache-refresh" class="btn ghost small" type="button">Refresh</button> <button id="cache-clear" class="btn danger small" type="button">Clear caches</button></div>
+<section class="panel" id="offline">
+  <div class="panel-head">
+    <span class="sec"><span class="num">05</span>Offline &amp; caches</span>
+    <div class="btn-row"><button id="cache-refresh" class="btn" type="button">Refresh</button><button id="cache-clear" class="btn danger" type="button">Clear caches</button></div>
   </div>
   <div id="cache-list" class="cache-list">…</div>
 </section>
 
-<section class="card" id="log-card">
-  <details><summary>Console log</summary><pre id="log" class="log"></pre></details>
+<section class="panel" id="log-card">
+  <details><summary><span class="sec"><span class="num">06</span>Console log</span><span class="chev" aria-hidden="true"></span></summary><pre id="log" class="log"></pre></details>
 </section>
 </main>
 
 <footer>
-  <p><strong>The Ultimate Guide to Browser-Based AI: Privacy-First, Offline-Ready, and Fully Future-Proof</strong> — Maxim Salnikov</p>
-  <p>Rebuilt Oct 2026 on <a href="https://github.com/huggingface/transformers.js" rel="noopener">Transformers.js v4.3.1</a> (ONNX Runtime Web 1.31.0-dev.20260914) · <a href="https://github.com/vibeprogrammer/ultimate-guide-browser-ai" id="source-link" rel="noopener">Source on GitHub</a> · <a href="https://webnn.io" rel="noopener">webnn.io</a> · <a href="https://developer.chrome.com/docs/ai/built-in-apis" rel="noopener">Built-in AI APIs</a></p>
+  <p class="talk">The Ultimate Guide to Browser-Based AI: Privacy-First, Offline-Ready, and Fully Future-Proof<br><span>Maxim Salnikov</span></p>
+  <p class="meta">Rebuilt Oct 2026 · <a href="https://github.com/huggingface/transformers.js" rel="noopener">Transformers.js 4.3.1</a> · ONNX Runtime Web 1.31.0-dev.20260914<br><a href="https://github.com/vibeprogrammer/ultimate-guide-browser-ai" id="source-link" rel="noopener">Source on GitHub</a> · <a href="https://webnn.io" rel="noopener">webnn.io</a> · <a href="https://developer.chrome.com/docs/ai/built-in-apis" rel="noopener">Built-in AI APIs</a></p>
   <p class="tiny">Samples: cats, corgi, butterfly and jfk.mp3 from the Transformers.js docs dataset; coffee cup photo by Julius Schorzman (Wikimedia Commons, CC BY-SA 2.0). Models stream from huggingface.co and are cached in your browser.</p>
 </footer>
 <script type="module" src="app.js"></script>
