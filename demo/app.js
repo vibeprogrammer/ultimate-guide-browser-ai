@@ -36,13 +36,29 @@ async function setupSW() {
   } catch (e) { pill.textContent = 'offline: SW failed — ' + e.message; pill.className = 'pill bad'; log('SW error', e.message); }
 }
 
+// ---------- which browser (only to print the right flags page; features are always feature-detected) ----------
+// Edge and Chrome share the same Web AI APIs but have different flags pages (edge:// vs chrome://) and
+// different built-in models. The demo never names a model: the browser chooses and downloads its own.
+const BRAND = (() => {
+  const b = (navigator.userAgentData?.brands || []).map(x => x.brand).join(' ') || navigator.userAgent;
+  return /Edg|Microsoft Edge/i.test(b) ? 'edge' : /Chrom/i.test(b) ? 'chrome' : 'other';
+})();
+const HELP = {
+  webnn: BRAND === 'edge' ? 'Edge: edge://flags/#web-machine-learning-neural-network → Enabled, restart.'
+       : BRAND === 'chrome' ? 'Chrome: chrome://flags/#web-machine-learning-neural-network → Enabled, restart.'
+       : 'WebNN is behind a flag in Chromium browsers (chrome://flags or edge://flags → "WebNN API").',
+  builtin: BRAND === 'edge' ? 'Edge: developer preview in Canary/Dev 138.0.3309.2+ → edge://flags → "Prompt API for on-device language model" → Enabled, restart.'
+         : BRAND === 'chrome' ? 'Chrome: on by default from Chrome 148 on desktop (Windows, macOS, Linux, Chromebook Plus); not on mobile yet.'
+         : 'Not exposed by this browser (Chrome 148+ desktop, or Edge Canary/Dev with the Prompt API flag).',
+};
+
 // ---------- capability detection ----------
 const caps = { webnn: { present: false, contexts: {} }, webgpu: { present: false }, wasm: {}, isolation: {}, storage: {}, builtin: {} };
 function setCap(id, cls, val, detail) { const el = $('#cap-' + id); el.className = 'cap ' + cls; el.querySelector('.cap-val').textContent = val; el.querySelector('.cap-detail').textContent = detail || ''; }
 
 async function probeWebNN() {
   caps.webnn = { present: 'ml' in navigator, contexts: {} };
-  if (!caps.webnn.present) { setCap('webnn', 'bad', 'not available', '`navigator.ml` is undefined in this browser.\nChrome/Edge: enable chrome://flags/#web-machine-learning-neural-network (and the OS backend: Windows ML / Core ML / LiteRT).'); return; }
+  if (!caps.webnn.present) { setCap('webnn', 'bad', 'not available', '`navigator.ml` is undefined in this browser.\n' + HELP.webnn); return; }
   const probes = [
     ['default {}', {}],
     ['deviceType:npu', { deviceType: 'npu' }],
@@ -113,7 +129,7 @@ async function probeWebGPU() {
     if (!adapter) { caps.webgpu.adapter = null; setCap('webgpu', 'warn', 'API present, no adapter', 'requestAdapter() returned null (no usable GPU / blocklisted / headless without GPU).'); return; }
     const info = adapter.info || {};
     const feats = [...adapter.features];
-    caps.webgpu.adapter = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, isFallback: adapter.isFallbackAdapter || /swiftshader|llvmpipe|software/i.test(`${info.architecture} ${info.description} ${info.device}`), f16: feats.includes('shader-f16'), subgroups: feats.includes('subgroups'), maxBuffer: adapter.limits?.maxBufferSize };
+    caps.webgpu.adapter = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, isFallback: info.isFallbackAdapter || adapter.isFallbackAdapter || /swiftshader|llvmpipe|software/i.test(`${info.architecture} ${info.description} ${info.device}`), f16: feats.includes('shader-f16'), subgroups: feats.includes('subgroups'), maxBuffer: adapter.limits?.maxBufferSize };
     const a = caps.webgpu.adapter;
     setCap('webgpu', a.isFallback ? 'warn' : 'ok', a.isFallback ? 'software fallback adapter' : 'available',
       `vendor=${a.vendor || '?'} arch=${a.architecture || '?'} ${a.description ? '(' + a.description + ')' : ''}\nshader-f16: ${a.f16 ? 'yes' : 'no'} · subgroups: ${a.subgroups ? 'yes' : 'no'} · maxBufferSize ${fmtMB(a.maxBuffer)}`);
@@ -136,16 +152,25 @@ async function probeStorage() {
     setCap('storage', 'ok', `${fmtMB(est.usage)} used`, `quota ≈ ${(est.quota / 1073741824).toFixed(1)} GB · persisted: ${persisted ? 'yes' : 'no'} · Cache API: ${'caches' in self ? 'yes' : 'no'}`);
   } catch (e) { setCap('storage', 'warn', 'unknown', e.message); }
 }
+// Built-in AI (Prompt API). Same API in every browser that ships it; the model behind it is the browser's own
+// (it differs per browser and per version), so nothing here names a model.
+// availability() must get the same options as create(): modalities + languages (developer.chrome.com/docs/ai/prompt-api).
+const LM_OPTS = { expectedInputs: [{ type: 'text', languages: ['en'] }], expectedOutputs: [{ type: 'text', languages: ['en'] }] };
+const LM_STATE = {
+  available: "The browser's built-in model is ready on this device.",
+  downloadable: "Supported here. The browser downloads its own model the first time you press Generate (it needs a click: user activation).",
+  downloading: "The browser is downloading its own model. Generate shows the progress and waits for it.",
+  unavailable: 'Not available on this device or for these options (text in/out, English). Card 3c falls back to Transformers.js.',
+};
 async function probeBuiltin() {
   caps.builtin = { present: 'LanguageModel' in self };
-  if (!caps.builtin.present) { setCap('builtin', 'bad', 'not available', '`LanguageModel` is not defined. Chrome 138+ with Gemini Nano (chrome://flags/#prompt-api-for-gemini-nano, or an origin trial) / Edge with Phi mini. Card 3c falls back to Transformers.js.'); $('#prompt-mode').textContent = 'built-in API absent → Transformers.js fallback'; return; }
+  if (!caps.builtin.present) { setCap('builtin', 'bad', 'not available', '`LanguageModel` is not defined in this browser.\n' + HELP.builtin + '\nCard 3c falls back to Transformers.js.'); $('#prompt-mode').textContent = 'built-in API absent → Transformers.js fallback'; return; }
   try {
-    const availability = await LanguageModel.availability();
+    const availability = await LanguageModel.availability(LM_OPTS);
     caps.builtin.availability = availability;
-    let params = ''; try { const p = await LanguageModel.params?.(); if (p) params = ` · defaultTopK=${p.defaultTopK} maxTopK=${p.maxTopK} defaultTemperature=${p.defaultTemperature}`; } catch {}
-    setCap('builtin', availability === 'available' ? 'ok' : 'warn', availability, `LanguageModel.availability() → "${availability}"${params}`);
-    $('#prompt-mode').textContent = availability === 'unavailable' ? 'built-in model unavailable → Transformers.js fallback' : `built-in Prompt API (${availability})`;
-  } catch (e) { caps.builtin.error = e.message; setCap('builtin', 'warn', 'error', e.message); $('#prompt-mode').textContent = 'Prompt API error → fallback'; }
+    setCap('builtin', availability === 'available' ? 'ok' : availability === 'unavailable' ? 'bad' : 'warn', availability, `LanguageModel.availability({text, en}) → "${availability}"\n${LM_STATE[availability] || 'Unknown state.'}`);
+    $('#prompt-mode').textContent = availability === 'unavailable' ? 'built-in model unavailable → Transformers.js fallback' : `browser's built-in model (${availability})`;
+  } catch (e) { caps.builtin.error = e.message; setCap('builtin', 'warn', 'error', `${e.name}: ${e.message}`); $('#prompt-mode').textContent = 'Prompt API error → fallback'; }
 }
 async function probeAll() { probeWASM(); await Promise.all([probeWebNN(), probeWebGPU(), probeStorage(), probeBuiltin()]); await probeDevices(); resolveDevice(); log('capabilities', caps); }
 $('#recheck-btn').onclick = probeAll;
@@ -321,16 +346,27 @@ async function runPrompt() {
     const pui = progressUI('prompt');
     try {
       const t0 = performance.now(); pui.show();
-      const session = await LanguageModel.create({ monitor(m) { m.addEventListener('downloadprogress', (e) => pui.update({ files: [{ loaded: e.loaded * 100, total: 100 }], event: { status: 'downloading Gemini Nano', file: '' } })); } });
+      // Progress comes from the monitor's downloadprogress event: loaded is a 0…1 fraction in Chrome; Edge's docs
+      // also give total, so loaded/total covers both. The model name is never shown: the browser picks it.
+      const wasReady = caps.builtin.availability === 'available';
+      const box = $('#prompt-progress'), fill = box.querySelector('.fill'), ptext = box.querySelector('.ptext');
+      ptext.textContent = wasReady ? "Starting a session with the browser's built-in model…" : "Asking the browser to prepare its built-in model…";
+      const session = await LanguageModel.create({ ...LM_OPTS, monitor(m) { m.addEventListener('downloadprogress', (e) => {
+        const f = e.total ? e.loaded / e.total : e.loaded;
+        fill.style.width = (f * 100).toFixed(1) + '%';
+        if (wasReady) return;
+        ptext.textContent = f >= 1 ? 'Model downloaded. The browser is loading it into memory…' : `Downloading the browser's built-in model… ${(f * 100).toFixed(0)}%`;
+      }); } });
       const loadMs = performance.now() - t0; pui.hide();
       const t1 = performance.now(); let first = 0, chars = 0;
       const stream = session.promptStreaming(text);
       for await (const chunk of stream) { if (!first) first = performance.now(); chars += chunk.length; out.textContent += chunk; }
       const total = performance.now() - t1;
       session.destroy?.();
+      if (!wasReady) probeBuiltin();
       const m = { device: 'built-in (Prompt API)', resolvedDtype: 'n/a', totalBytes: null, loadMs, firstMs: first - t1, avgMs: null, tokens: null, tokPerSec: null };
       showTimings('prompt', m); $('#prompt-timings').insertAdjacentHTML('beforeend', `<div><dt>total</dt><dd>${fmtMs(total)}</dd></div><div><dt>chars/s</dt><dd>${(chars / (total / 1000)).toFixed(0)}</dd></div>`);
-      addBench({ task: 'text-generation', model: 'built-in (Gemini Nano / Phi)', device: 'Prompt API', dtype: 'n/a', bytes: null, loadMs, firstMs: first - t1, avgMs: null, runs: 0, tokPerSec: null, result: `${chars} chars in ${fmtMs(total)}` });
+      addBench({ task: 'text-generation', model: "browser's built-in model", device: 'Prompt API', dtype: 'n/a', bytes: null, loadMs, firstMs: first - t1, avgMs: null, runs: 0, tokPerSec: null, result: `${chars} chars in ${fmtMs(total)}` });
       btn.disabled = false; return;
     } catch (e) { log('Prompt API failed, falling back:', e.message); out.textContent = `(built-in API failed: ${e.message}) — falling back to Transformers.js\n\n`; pui.hide(); }
   }

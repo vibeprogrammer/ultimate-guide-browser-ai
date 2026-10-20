@@ -1,5 +1,5 @@
 # Story: "The Ultimate Guide to Browser-Based AI: Privacy-First, Offline-Ready, and Fully Future-Proof"
-Speaker: Maxim Salnikov. Target 45 min (plan 42–46 min of talk + Q&A buffer). v2 (final), 16 Oct 2026. Facts come from research.md (sections cited as §n) and demo/NOTES.md. Demo URL: https://webai-playground.sites.tab.bot/
+Speaker: Maxim Salnikov. Target 45 min (plan 42–46 min of talk + Q&A buffer). v2 (final), 16 Oct 2026. Facts come from research.md (sections cited as §n) and demo/NOTES.md. Demo URL: https://webai.isainative.dev/
 
 ## The promise (one sentence)
 Every modern browser already ships enough AI plumbing to run real models on the user's device; the job in 2026 is to choose the right layer, detect what the device has, and degrade gracefully — and I'll show that live, from NPU to cloud fallback.
@@ -37,6 +37,6 @@ First person, practical, opinionated, demo-driven. Short sentences. Say the stat
 - Demo (demo/NOTES.md): ResNet-50 q8 26 MB, MobileNet-v2 from the webnn org, whisper-tiny.en q8 ≈ 41 MB, SmolLM2-135M-Instruct q8 137 MB as the Prompt-API fallback; measured in headless Chrome on WASM: resnet-50 q8 186 ms avg, mobilenet-v2 fp16 76 ms, whisper-tiny.en 1.4 s, SmolLM2-135M 24 tok/s (software WebGPU slower). WebNN/NPU numbers must be measured by Maxim on his Snapdragon/Core Ultra laptop — leave a visible "measure on stage" cell.
 
 ## Demo script (for the talk track)
-Demo 1 (opening, 3 min): open https://webai-playground.sites.tab.bot/ with Wi-Fi off (it was loaded once before); capability panel; classify the corgi on WASM; switch to WebGPU; show the timings table.
+Demo 1 (opening, 3 min): open https://webai.isainative.dev/ with Wi-Fi off (it was loaded once before); capability panel; classify the corgi on WASM; switch to WebGPU; show the timings table.
 Demo 2 (WebNN deep dive, 4 min): Chrome Canary/Edge Canary with the WebNN flag on; pick WebNN → NPU; classify again; open Task Manager → NPU graph; compare the three rows in the benchmark table. Then whisper-tiny on the bundled JFK clip (or the mic).
 Demo 3 (built-in AI, 3 min): the Prompt API card: availability() result, create() with download progress, prompt(); then in a browser without the API (or a flag off) show the fallback to SmolLM2 via Transformers.js — same UI, different engine.
