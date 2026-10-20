@@ -12,7 +12,7 @@ Generative and intelligent features are quickly becoming a core part of modern w
 |---|---|
 | [`deck/`](deck/) | The deck (35 slides, PPTX + PDF), the talk track as PDF (slide thumbnail + script per page) and as Markdown |
 | [`demo/`](demo/) | **Web AI Bench** — the rebuilt WebNN demo: Transformers.js 4.3.1, WebNN / WebGPU / WASM switcher, offline-ready, mobile-first |
-| [`docs/`](docs/) | Research with primary sources ([`research.md`](docs/research.md)), the story and slide plan ([`story.md`](docs/story.md)), slide-to-source traceability ([`slides-outline.md`](docs/slides-outline.md)), what changed since the previous deck ([`analysis.md`](docs/analysis.md)), the browser/vendor assumptions audit of the demo ([`ASSUMPTIONS-AUDIT.md`](docs/ASSUMPTIONS-AUDIT.md)), demo [screenshots](docs/screenshots/) |
+| [`docs/`](docs/) | Research with primary sources ([`research.md`](docs/research.md)), the story and slide plan ([`story.md`](docs/story.md)), slide-to-source traceability ([`slides-outline.md`](docs/slides-outline.md)), what changed since the previous deck ([`analysis.md`](docs/analysis.md)), the browser/vendor assumptions audit of the demo ([`ASSUMPTIONS-AUDIT.md`](docs/ASSUMPTIONS-AUDIT.md)), how WebNN device selection really works, source-traced through Transformers.js, ONNX Runtime Web and Chromium ([`WEBNN-DEVICE-SELECTION.md`](docs/WEBNN-DEVICE-SELECTION.md)), demo [screenshots](docs/screenshots/) |
 
 ## The demo: Web AI Bench
 

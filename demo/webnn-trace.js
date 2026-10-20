@@ -48,25 +48,42 @@ export function verdict(requested, devices) {
   if (devices === undefined) return { cls: 'warn', short: 'not observable', text: 'This browser has no MLGraph.devices — the device it picked is not observable from JS.' };
   if (!devices.length) return { cls: 'warn', short: 'not observable', text: 'Browser picked; not observable from JS (graph.devices is empty — the Windows ML / ONNX Runtime backend does not report it yet, crbug.com/418031018). Check Task Manager or chrome://histograms (README).' };
   const list = devices.join(' + ');
-  if (requested === 'default') return { cls: 'ok', short: list, text: `Browser default; graph runs on ${list}.` };
+  if (requested === 'default') return { cls: 'ok', short: list, text: `No deviceType passed (Chromium then uses its IDL default "cpu"); graph runs on ${list}.` };
   if (devices.includes(requested)) return { cls: 'ok', short: list, text: devices.length > 1 ? `Runs on ${requested}; some ops on ${devices.filter(d => d !== requested).join(' + ')}.` : `Runs on ${requested}.` };
   return { cls: 'bad', short: `fallback → ${list}`, text: `FALLBACK: asked for ${requested}, the browser compiled the graph for ${list} (no error was thrown).` };
 }
 
 // Probe one device: create a context, build the tiny graph, read graph.devices. Timed.
 export async function probeDevice(deviceType) {
-  const r = { device: deviceType };
+  const r = await probeWith(deviceType === 'default' ? {} : { deviceType });
+  r.device = deviceType;
+  r.verdict = r.ok === false ? r.verdict : r.buildError ? { cls: 'bad', short: 'build failed', text: r.buildError } : verdict(deviceType, r.devices);
+  return r;
+}
+
+// The W3C spec's device hints (deviceType was removed from the spec in Feb 2025, webmachinelearning/webnn#809):
+// powerPreference ("default" | "high-performance" | "low-power") and accelerated (boolean). Probed without deviceType.
+export const SPEC_PROBES = [
+  ['powerPreference: "high-performance"', { powerPreference: 'high-performance' }],
+  ['powerPreference: "low-power"', { powerPreference: 'low-power' }],
+  ['accelerated: true', { accelerated: true }],
+  ['low-power + accelerated', { powerPreference: 'low-power', accelerated: true }],
+];
+
+// Create a context with any MLContextOptions, build the tiny graph, read graph.devices. Timed.
+export async function probeWith(options) {
+  const r = { options };
   const t0 = performance.now();
   let ctx;
-  try { ctx = await navigator.ml.createContext(deviceType === 'default' ? {} : { deviceType }); r.contextMs = performance.now() - t0; r.ok = true; }
-  catch (e) { r.contextMs = performance.now() - t0; r.ok = false; r.error = `${e.name}: ${e.message}`; return r; }
+  try { ctx = await navigator.ml.createContext(options); r.contextMs = performance.now() - t0; r.ok = true; }
+  catch (e) { r.contextMs = performance.now() - t0; r.ok = false; r.error = `${e.name}: ${e.message}`; r.verdict = { cls: 'bad', short: 'rejected', text: r.error }; return r; }
   if ('accelerated' in ctx) r.accelerated = ctx.accelerated;
+  if ('powerPreference' in ctx) r.powerPreference = ctx.powerPreference;
   r.limits = limitsSummary(ctx);
   const t1 = performance.now();
   try { const g = await buildProbeGraph(ctx); r.buildMs = performance.now() - t1; r.devices = 'devices' in g ? [...g.devices] : undefined; g.destroy?.(); }
   catch (e) { r.buildMs = performance.now() - t1; r.buildError = `${e.name}: ${e.message}`; }
   ctx.destroy?.();
-  r.verdict = r.buildError ? { cls: 'bad', short: 'build failed', text: r.buildError } : verdict(deviceType, r.devices);
   return r;
 }
 
