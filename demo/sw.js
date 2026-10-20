@@ -1,6 +1,6 @@
 // Web AI Playground — service worker: precache the app shell + vendored library; runtime-cache the ORT wasm from the CDN.
 // Model files from huggingface.co are cached by Transformers.js itself (Cache API, 'transformers-cache'); we pass them through untouched.
-const SHELL = 'webai-shell-v11';
+const SHELL = 'webai-shell-v12';
 const CDN = 'webai-cdn-v7';
 const SHELL_FILES = ['./', './index.html', './styles.css', './app.js', './inference-worker.js', './webnn-trace.js', './manifest.webmanifest', './icon.svg',
   './samples/cats.jpg', './samples/corgi.jpg', './samples/coffee.jpg', './samples/butterfly.jpg', './samples/jfk.mp3'];

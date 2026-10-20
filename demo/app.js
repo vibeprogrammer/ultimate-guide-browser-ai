@@ -1,5 +1,5 @@
 // Web AI Playground — main thread (UI, feature detection, worker orchestration)
-import { DEVICES, probeDevice, readOptionNames } from './webnn-trace.js';
+import { DEVICES, probeDevice, probeWith, SPEC_PROBES, readOptionNames } from './webnn-trace.js';
 const $ = (s) => document.querySelector(s);
 const logEl = $('#log');
 function log(...a) { const line = `[${new Date().toISOString().slice(11, 19)}] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '); console.log(line); logEl.textContent += line + '\n'; }
@@ -101,6 +101,24 @@ async function probeDevices() {
     const devCell = r.devices === undefined ? (r.ok ? 'n/a' : '—') : r.devices.length ? r.devices.join(' + ') : '[] (not reported)';
     rows.push(`<tr class="${r.verdict.cls}"><th scope="row">WebNN ${d.toUpperCase()}</th><td>${ctxCell}</td><td>${r.buildMs != null ? fmtMs(r.buildMs) : '—'}</td><td>${devCell}</td><td class="v">${r.verdict.text}</td></tr>`);
   }
+  // W3C-spec hints (no deviceType): does the browser read them, and do they change where the graph runs?
+  caps.devices.spec = [];
+  if ('ml' in navigator) {
+    const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+    const cpuDev = caps.devices.cpu?.devices, gpuDev = caps.devices.gpu?.devices, noneDev = (await probeWith({})).devices;
+    for (const [label, opts] of SPEC_PROBES) {
+      const r = await probeWith(opts); r.label = label; caps.devices.spec.push(r);
+      let cls = 'warn', text;
+      if (!r.ok) { cls = 'bad'; text = r.error; }
+      else if (r.buildError) { cls = 'bad'; text = r.buildError; }
+      else if (!r.devices || !r.devices.length) text = 'Accepted; where the graph runs is not observable from JS here.';
+      else if (same(r.devices, noneDev) && !same(noneDev, gpuDev)) text = `Accepted, but compiled for ${r.devices.join(' + ')}, the same as passing no options${same(r.devices, cpuDev) ? ' (= deviceType "cpu")' : ''}. The hint did not change the device.`;
+      else { cls = 'ok'; text = `Changed the device: compiled for ${r.devices.join(' + ')} (no options: ${(noneDev || []).join(' + ') || '?'}).`; }
+      if (r.ok && 'accelerated' in opts) text += ` context.accelerated: ${'accelerated' in r ? r.accelerated : 'not exposed'}.`;
+      r.verdict = { cls, short: r.devices?.join('+') || (r.ok ? 'n/a' : 'rejected'), text };
+      rows.push(`<tr class="${cls}"><th scope="row">W3C ${label}</th><td>${r.ok ? `✓ ${fmtMs(r.contextMs)}` : '✗'}</td><td>${r.buildMs != null ? fmtMs(r.buildMs) : '—'}</td><td>${r.devices === undefined ? (r.ok ? 'n/a' : '—') : r.devices.length ? r.devices.join(' + ') : '[] (not reported)'}</td><td class="v">${text}</td></tr>`);
+    }
+  }
   const a = caps.webgpu.adapter;
   const gpuCell = !caps.webgpu.present ? 'navigator.gpu undefined' : a ? `${a.vendor || '?'} · ${a.architecture || '?'}${a.description ? ' · ' + a.description : ''}` : 'no adapter';
   const gpuCls = a && !a.isFallback ? 'ok' : a ? 'warn' : 'bad';
@@ -118,7 +136,7 @@ async function probeDevices() {
   const sum = (key, r, observedOk) => { const el = document.querySelector(`[data-sum=${key}]`); if (el) el.dataset.state = !r?.ok || r.verdict?.cls === 'bad' ? 'bad' : observedOk ? 'ok' : 'warn'; };
   sum('npu', npu, npu?.devices?.includes('npu'));
   sum('gpu', gpu, gpu?.devices?.includes('gpu') || (a && !a.isFallback));
-  log('device availability', Object.fromEntries(DEVICES.map(d => [d, { context: caps.devices[d].ok, contextMs: Math.round(caps.devices[d].contextMs ?? 0), graphDevices: caps.devices[d].devices, verdict: caps.devices[d].verdict.short }])), 'webgpu', a ? `${a.vendor}/${a.architecture}${a.isFallback ? ' (software)' : ''}` : 'none', 'options read', o?.read);
+  log('device availability', Object.fromEntries(DEVICES.map(d => [d, { context: caps.devices[d].ok, contextMs: Math.round(caps.devices[d].contextMs ?? 0), graphDevices: caps.devices[d].devices, verdict: caps.devices[d].verdict.short }])), 'webgpu', a ? `${a.vendor}/${a.architecture}${a.isFallback ? ' (software)' : ''}` : 'none', 'options read', o?.read, 'spec hints', caps.devices.spec.map(r => [r.label, r.devices, r.verdict?.short]));
 }
 
 async function probeWebGPU() {
@@ -186,7 +204,10 @@ function describeDevice(dev) {
 let resolved = { device: 'wasm', reason: '' };
 function resolveDevice() {
   const mode = selectedDevice();
-  $('#webnn-sub').style.display = mode === 'webnn' ? '' : 'none';
+  const specMode = mode === 'webnn' && $('#webnn-mode').value === 'power';
+  $('#webnn-mode-sub').style.display = mode === 'webnn' ? '' : 'none';
+  $('#webnn-sub').style.display = mode === 'webnn' && !specMode ? '' : 'none';
+  $('#webnn-power-sub').style.display = $('#webnn-accel-sub').style.display = specMode ? '' : 'none';
   if (mode === 'auto') {
     // A WebNN context for "npu" is created even when there is no NPU (the browser falls back silently),
     // so Auto trusts graph.devices when the browser reports it, and says so when it can't.
@@ -197,14 +218,19 @@ function resolveDevice() {
     else if (usable('gpu')) resolved = { device: 'webnn-gpu', reason: `${d.npu?.ok ? 'NPU request fell back to ' + (d.npu.devices || []).join('+') : 'no NPU context'} → webnn-gpu` };
     else if (caps.webgpu.adapter && !caps.webgpu.adapter.isFallback) resolved = { device: 'webgpu', reason: `${caps.webnn.present ? 'WebNN present but no accelerated context' : 'no WebNN'}; WebGPU adapter found → webgpu` };
     else resolved = { device: 'wasm', reason: `${caps.webnn.present ? 'WebNN has no usable context' : 'no WebNN'}; ${caps.webgpu.adapter ? 'WebGPU adapter is a software fallback' : 'no WebGPU adapter'} → wasm` };
-  } else if (mode === 'webnn') resolved = { device: webnnString($('#webnn-device').value), reason: 'chosen manually' };
+  } else if (mode === 'webnn' && $('#webnn-mode').value === 'power') {
+    // W3C-spec mode: no deviceType. The demo creates the MLContext itself and hands it to ORT's WebNN EP ({ context }).
+    const spec = { powerPreference: $('#webnn-power').value };
+    if ($('#webnn-accel').value) spec.accelerated = $('#webnn-accel').value === 'true';
+    resolved = { device: 'webnn', spec, reason: `chosen manually · W3C spec options, no deviceType: createContext(${JSON.stringify(spec)})` };
+  } else if (mode === 'webnn') resolved = { device: webnnString($('#webnn-device').value), reason: 'chosen manually · deviceType (what Chromium reads today)' };
   else resolved = { device: mode, reason: 'chosen manually' };
   const dtype = $('#dtype').value;
   const dtypeNote = dtype === 'auto' ? (resolved.device === 'wasm' ? 'auto → q8 (library default for wasm)' : 'auto → fp32 (library default for ' + resolved.device + ')') : dtype;
-  const chainNote = resolved.device.startsWith('webnn') && $('#chain').checked ? ` · on failure: ${['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].slice(Math.max(0, ['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].indexOf(resolved.device))).join(' → ')}` : '';
-  $('#resolved').innerHTML = `Will run with <strong>device: "${resolved.device}"</strong> → ${describeDevice(resolved.device)} · dtype: <strong>${dtypeNote}</strong><br><span>${resolved.reason}${chainNote}</span>`;
+  const chainNote = resolved.device.startsWith('webnn') && !resolved.spec && $('#chain').checked ? ` · on failure: ${['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].slice(Math.max(0, ['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].indexOf(resolved.device))).join(' → ')}` : '';
+  $('#resolved').innerHTML = `Will run with <strong>device: "${resolved.device}"</strong> → ${resolved.spec ? `ORT WebNN EP with an MLContext this demo creates: createContext(${JSON.stringify(resolved.spec)}), no deviceType` : describeDevice(resolved.device)} · dtype: <strong>${dtypeNote}</strong><br><span>${resolved.reason}${chainNote}</span>`;
 }
-document.querySelectorAll('input[name=device], #webnn-device, #dtype, #chain').forEach(el => el.addEventListener('change', resolveDevice));
+document.querySelectorAll('input[name=device], #webnn-device, #webnn-mode, #webnn-power, #webnn-accel, #dtype, #chain').forEach(el => el.addEventListener('change', resolveDevice));
 
 // ---------- worker ----------
 const worker = new Worker('./inference-worker.js', { type: 'module' });
@@ -350,13 +376,19 @@ async function runPrompt() {
       // also give total, so loaded/total covers both. The model name is never shown: the browser picks it.
       const wasReady = caps.builtin.availability === 'available';
       const box = $('#prompt-progress'), fill = box.querySelector('.fill'), ptext = box.querySelector('.ptext');
+      // Indeterminate until a number arrives: downloadprogress may never fire (model already there) or start above 0
+      // (state "downloading" when the page loaded). loaded is a 0…1 fraction; there are no byte counts in the event.
+      box.classList.add('indet');
       ptext.textContent = wasReady ? "Starting a session with the browser's built-in model…" : "Asking the browser to prepare its built-in model…";
       const session = await LanguageModel.create({ ...LM_OPTS, monitor(m) { m.addEventListener('downloadprogress', (e) => {
-        const f = e.total ? e.loaded / e.total : e.loaded;
-        fill.style.width = (f * 100).toFixed(1) + '%';
         if (wasReady) return;
-        ptext.textContent = f >= 1 ? 'Model downloaded. The browser is loading it into memory…' : `Downloading the browser's built-in model… ${(f * 100).toFixed(0)}%`;
+        const f = Math.min(1, Math.max(0, e.total ? e.loaded / e.total : e.loaded));
+        if (f >= 1) { box.classList.add('indet'); ptext.textContent = 'Model downloaded. The browser is loading it into memory…'; return; }
+        box.classList.remove('indet');
+        fill.style.width = (f * 100).toFixed(1) + '%';
+        ptext.textContent = `Downloading the browser's built-in model… ${Math.round(f * 100)}%`;
       }); } });
+      box.classList.remove('indet');
       const loadMs = performance.now() - t0; pui.hide();
       const t1 = performance.now(); let first = 0, chars = 0;
       const stream = session.promptStreaming(text);
@@ -368,7 +400,7 @@ async function runPrompt() {
       showTimings('prompt', m); $('#prompt-timings').insertAdjacentHTML('beforeend', `<div><dt>total</dt><dd>${fmtMs(total)}</dd></div><div><dt>chars/s</dt><dd>${(chars / (total / 1000)).toFixed(0)}</dd></div>`);
       addBench({ task: 'text-generation', model: "browser's built-in model", device: 'Prompt API', dtype: 'n/a', bytes: null, loadMs, firstMs: first - t1, avgMs: null, runs: 0, tokPerSec: null, result: `${chars} chars in ${fmtMs(total)}` });
       btn.disabled = false; return;
-    } catch (e) { log('Prompt API failed, falling back:', e.message); out.textContent = `(built-in API failed: ${e.message}) — falling back to Transformers.js\n\n`; pui.hide(); }
+    } catch (e) { log('Prompt API failed, falling back:', e.message); out.textContent = `(built-in API failed: ${e.message}) — falling back to Transformers.js\n\n`; $('#prompt-progress').classList.remove('indet'); pui.hide(); }
   }
   await runTask('prompt', text);
   btn.disabled = false;
@@ -395,8 +427,8 @@ async function runTask(kind, promptText) {
     if (kind === 'speech') { if (!audioData) await loadSampleAudio(); input = audioData.slice(0); transfer = [input.buffer]; $('#speech-result').textContent = ''; }
     if (kind === 'prompt') { input = [{ role: 'system', content: 'You are a concise assistant.' }, { role: 'user', content: promptText }]; }
     const t0 = performance.now();
-    traceHeader(kind, device);
-    const res = await runInWorker({ task: T.task, model, device, dtype, input, runs, chain: $('#chain').checked, verbose: $('#verbose-ort').checked }, {
+    traceHeader(kind, device + (device.startsWith('webnn') && resolved.spec ? ` [W3C ${JSON.stringify(resolved.spec)}]` : ''));
+    const res = await runInWorker({ task: T.task, model, device, dtype, input, runs, chain: $('#chain').checked, verbose: $('#verbose-ort').checked, webnnSpec: device.startsWith('webnn') ? resolved.spec || null : null }, {
       onProgress: (m) => pui.update(m),
       onLoaded: (m) => { pui.done(m); if (m.fellBack) log(`fallback: requested ${m.requested}, running on ${m.device}`); if (kind !== 'prompt') statusEl.textContent = `loaded on ${m.device}${m.fellBack ? ' (fallback from ' + m.requested + ')' : ''} (${fmtMs(m.loadMs)}) — running ${runs + 1}×…`; },
       onRun: (m) => { if (kind !== 'prompt') statusEl.textContent = `run ${m.i + 1}/${m.total}: ${fmtMs(m.ms)}`; },
