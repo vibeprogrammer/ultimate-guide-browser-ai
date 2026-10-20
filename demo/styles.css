@@ -223,3 +223,31 @@ footer .meta{font-family:var(--mono);font-size:var(--fs-xs)}
 .tiny{font-size:var(--fs-xs)}
 .err{color:var(--bad)}.ok-text{color:var(--ok)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* device availability + fallback trace */
+.dot[data-state=ok]::before{background:var(--ok)}.dot[data-state=warn]::before{background:var(--warn)}.dot[data-state=bad]::before{background:var(--bad)}
+.devices{margin-top:12px}
+.devices .cap-name{margin-bottom:8px}
+.devices .cap-name .hint{font-weight:400}
+#device-table{font-size:var(--fs-xs)}
+#device-table th[scope=row]{text-align:left;white-space:nowrap;color:var(--text);font-weight:600;background:none;text-transform:none;letter-spacing:0;font-size:var(--fs-xs)}
+#device-table td,#device-table th{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+#device-table td.v{font-family:var(--sans);overflow-wrap:anywhere;min-width:16ch}
+#device-table tr.ok td.v{color:var(--ok)}#device-table tr.warn td.v{color:var(--warn)}#device-table tr.bad td.v{color:var(--bad)}
+#device-note{white-space:pre-wrap}
+.checks{display:flex;flex-direction:column;justify-content:center;gap:4px}
+.field>.check{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;cursor:pointer;min-height:20px}
+.check input{flex:none;width:16px;height:16px;margin:0;accent-color:var(--accent);display:inline-block}
+.trace{font-family:var(--mono);font-size:var(--fs-xs);max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:var(--r);padding:8px;background:var(--surface2);min-height:3em}
+.trace:empty::before{content:"Run a task with WebNN selected to see the trace.";color:var(--faint)}
+.tl{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45;color:var(--muted)}
+.tl.head{color:var(--text);font-weight:600}.tl.sep{height:8px}
+.tl.bad{color:var(--bad)}.tl.warn{color:var(--warn)}.tl.ok{color:var(--ok)}
+#device-table td.v{white-space:normal}
+@media (max-width:767px){
+  #device-table tbody tr{grid-template-columns:1fr 1fr 1fr;gap:6px 8px}
+  #device-table th[scope=row]{grid-column:1/-1;padding:0;border:0}
+  #device-table td{font-weight:500;padding:0}
+  #device-table td:nth-child(2)::before{content:"context"}#device-table td:nth-child(3)::before{content:"build"}#device-table td:nth-child(4)::before{content:"graph.devices"}#device-table td:nth-child(5)::before{content:"verdict"}
+  #device-table td:nth-child(2){grid-column:auto;overflow-wrap:anywhere}#device-table td:nth-child(5){grid-column:1/-1}
+}

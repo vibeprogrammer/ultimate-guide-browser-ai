@@ -37,6 +37,8 @@
       <span class="sec"><span class="num">01</span>Capabilities</span>
       <span class="caps-summary" aria-hidden="true">
         <span class="dot" data-sum="webnn">WebNN</span>
+        <span class="dot" data-sum="npu">NPU</span>
+        <span class="dot" data-sum="gpu">GPU</span>
         <span class="dot" data-sum="webgpu">WebGPU</span>
         <span class="dot" data-sum="wasm">WASM</span>
         <span class="dot" data-sum="isolation">COI</span>
@@ -53,6 +55,16 @@
         <div class="cap" id="cap-isolation"><div class="cap-name">Cross-origin isolation</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
         <div class="cap" id="cap-storage"><div class="cap-name">Storage</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
         <div class="cap" id="cap-builtin"><div class="cap-name">Built-in AI (Prompt API)</div><div class="cap-val">checking…</div><div class="cap-detail"></div></div>
+      </div>
+      <div class="devices" id="cap-devices">
+        <div class="cap-name">Device availability <span class="hint">— what the browser compiles for when you ask for each device</span></div>
+        <div class="table-wrap">
+        <table id="device-table">
+          <thead><tr><th>Device</th><th>createContext</th><th>Build</th><th>graph.devices</th><th>Verdict</th></tr></thead>
+          <tbody><tr><td colspan="5">checking…</td></tr></tbody>
+        </table>
+        </div>
+        <p class="hint foot" id="device-note"></p>
       </div>
       <div class="panel-foot"><button id="recheck-btn" class="btn" type="button">Re-check</button></div>
     </div>
@@ -96,6 +108,10 @@
         <label for="runs">timed runs</label>
         <input id="runs" type="number" inputmode="numeric" min="1" max="50" value="5">
       </span>
+      <span class="sub field checks">
+        <label class="check" title="If a WebNN device fails, try the next: NPU → GPU → CPU → WASM, and log each step"><input type="checkbox" id="chain" checked> fallback chain</label>
+        <label class="check" title="ORT logs every node at severity 0 (it prints through console.error, so the console fills up)"><input type="checkbox" id="verbose-ort"> verbose ORT op log</label>
+      </span>
     </div>
   </div>
   <p class="resolved" id="resolved">Resolving…</p>
@@ -109,7 +125,7 @@
   <label class="field wide" for="image-model"><span>Model</span>
     <select id="image-model" aria-label="Model">
       <option value="Xenova/resnet-50">Xenova/resnet-50 · 25.8 MB q8</option>
-      <option value="webnn/mobilenet-v2">webnn/mobilenet-v2 · 7 MB fp16</option>
+      <option value="webnn/mobilenet-v2" data-dtype="fp16">webnn/mobilenet-v2 · 7 MB fp16</option>
     </select>
   </label>
   <div class="samples" id="image-samples">
@@ -176,9 +192,18 @@
   <dl class="timings" id="prompt-timings"></dl>
 </section>
 
+<section class="panel" id="trace-card">
+  <div class="panel-head">
+    <span class="sec"><span class="num">04</span>Fallback trace</span>
+    <div class="btn-row"><button id="trace-copy" class="btn" type="button">Copy</button><button id="trace-clear" class="btn" type="button">Clear</button></div>
+  </div>
+  <div id="trace" class="trace" aria-live="polite"></div>
+  <p class="hint foot">Requested vs. what JS can observe: each WebNN context and graph the library creates (options passed, time, <code>graph.devices</code>), this demo's own chain (NPU → GPU → CPU → WASM on errors), ORT op placement (turn on <em>verbose ORT op log</em>), and per-run timings. A missing NPU does not throw: when <code>graph.devices</code> is empty the browser picked and JS cannot see what. Then use Task Manager / <code>chrome://histograms</code> (README → “Tracing NPU fallback”).</p>
+</section>
+
 <section class="panel" id="bench">
   <div class="panel-head">
-    <span class="sec"><span class="num">04</span>Benchmark board</span>
+    <span class="sec"><span class="num">05</span>Benchmark board</span>
     <div class="btn-row"><button id="bench-copy" class="btn" type="button">Copy as Markdown</button><button id="bench-clear" class="btn" type="button">Clear</button></div>
   </div>
   <div class="table-wrap">
@@ -192,14 +217,14 @@
 
 <section class="panel" id="offline">
   <div class="panel-head">
-    <span class="sec"><span class="num">05</span>Offline &amp; caches</span>
+    <span class="sec"><span class="num">06</span>Offline &amp; caches</span>
     <div class="btn-row"><button id="cache-refresh" class="btn" type="button">Refresh</button><button id="cache-clear" class="btn danger" type="button">Clear caches</button></div>
   </div>
   <div id="cache-list" class="cache-list">…</div>
 </section>
 
 <section class="panel" id="log-card">
-  <details><summary><span class="sec"><span class="num">06</span>Console log</span><span class="chev" aria-hidden="true"></span></summary><pre id="log" class="log"></pre></details>
+  <details><summary><span class="sec"><span class="num">07</span>Console log</span><span class="chev" aria-hidden="true"></span></summary><pre id="log" class="log"></pre></details>
 </section>
 </main>
 
