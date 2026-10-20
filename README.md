@@ -4,7 +4,7 @@
 
 Generative and intelligent features are quickly becoming a core part of modern web experiences—but they often come with trade-offs: privacy concerns, reliance on internet connectivity, and the cost of using cloud-based APIs. What if you could bring powerful AI directly into the browser, on the user's device? In this session, we'll explore the full landscape of browser-based AI and machine learning—no servers required. From text generation and image recognition to real-time transcription and offline copilots, the web platform now provides a rich toolbox of APIs and tools to enable truly private, performant, and intelligent experiences.
 
-**Live demo:** https://webai-playground.sites.tab.bot/
+**Live demo:** https://webai.isainative.dev/ (GitHub Pages from the `gh-pages` branch)
 
 ## What's inside
 
@@ -106,7 +106,7 @@ PowerShell 5.1, Edge. The same switches work for `chrome.exe`. The separate prof
 ```powershell
 $edge = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
 $dir  = "$env:TEMP\webnn-trace"
-& $edge --user-data-dir="$dir" --enable-features=WebMachineLearningNeuralNetwork --enable-logging --v=0 --webnn-ort-logging-level=INFO https://webai-playground.sites.tab.bot/
+& $edge --user-data-dir="$dir" --enable-features=WebMachineLearningNeuralNetwork --enable-logging --v=0 --webnn-ort-logging-level=INFO https://webai.isainative.dev/
 # after a WebNN run:
 Select-String -Path "$dir\chrome_debug.log" -Pattern "OrtEpDevice|NPU driver|Falling back" | Select-Object -First 30
 ```
