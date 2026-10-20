@@ -52,8 +52,8 @@ function dtypeFromFiles(files) {
   return [...set].join('+') || 'n/a';
 }
 
-async function load({ task, model, device, dtype, id, verbose }) {
-  const key = `${task}|${model}|${device}|${dtype}|${verbose ? 'v' : ''}`;
+async function load({ task, model, device, dtype, id, verbose, spec }) {
+  const key = `${task}|${model}|${device}|${dtype}|${verbose ? 'v' : ''}|${spec ? JSON.stringify(spec) : ''}`;
   if (current && current.key === key) { trace('step', `${device}: reusing the session already loaded in this worker (no new context/graph to trace; reload the page to trace session creation again)`); return current; }
   if (current) { try { await current.pipe.dispose(); } catch (e) { /* ignore */ } current = null; }
   const files = new Map();
@@ -74,6 +74,15 @@ async function load({ task, model, device, dtype, id, verbose }) {
   // WebNN needs static shapes. Without these, ORT sends every node with a dynamic shape to the CPU (WASM) EP
   // (resnet-50: 120 of 122 nodes). Names that a model doesn't use are ignored.
   if (device.startsWith('webnn') && task === 'image-classification') opts.session_options = { ...opts.session_options, freeDimensionOverrides: { batch_size: 1, num_channels: 3, height: 224, width: 224 } };
+  // W3C-spec mode: the spec has no deviceType, so Transformers.js' "webnn-npu"/"webnn-gpu" (= ORT { deviceType }) can't
+  // express it. Create the MLContext here with powerPreference/accelerated only and give it to ORT's WebNN EP as
+  // { context }. ORT wants a deviceType next to a context (InferenceSession.WebNNOptionsWithMLContext); it only steers
+  // ORT's own layout/op checks, not the browser's device choice, so we pass ORT's own default "cpu".
+  if (spec && device.startsWith('webnn')) {
+    trace('step', `W3C spec mode: createContext(${JSON.stringify(spec)}) with no deviceType, then ORT WebNN EP { context }`);
+    const mlContext = await navigator.ml.createContext(spec);
+    opts.session_options = { ...opts.session_options, executionProviders: [{ name: 'webnn', context: mlContext, deviceType: 'cpu' }] };
+  }
   const pipe = await pipeline(task, model, opts);
   const loadMs = performance.now() - t0;
   const totalBytes = [...files.values()].reduce((a, r) => a + (r.total || 0), 0);
@@ -87,17 +96,17 @@ self.onmessage = async (ev) => {
     if (msg.type === 'hello') { post({ type: 'hello', ortVersion, webnnInWorker: typeof navigator !== 'undefined' && 'ml' in navigator, webgpuInWorker: typeof navigator !== 'undefined' && 'gpu' in navigator }); return; }
     if (msg.type === 'dispose') { if (current) { try { await current.pipe.dispose(); } catch {} current = null; } post({ type: 'disposed', id: msg.id }); return; }
     if (msg.type === 'run') {
-      const { id, task, model, device: requested, dtype, input, runs = 5, genOptions = {}, chain = true, verbose = false } = msg;
+      const { id, task, model, device: requested, dtype, input, runs = 5, genOptions = {}, chain = true, verbose = false, webnnSpec = null } = msg;
       traceCtx = { id, t0: performance.now(), ortParser: verbose ? createOrtLogParser() : null, graphs: [] };
-      const steps = chain && requested.startsWith('webnn') ? fallbackChain(requested) : [requested];
-      trace('plan', `requested device "${requested}", dtype ${dtype}; ${steps.length > 1 ? 'explicit fallback chain: ' + steps.join(' → ') : 'no fallback chain (single device)'}${verbose ? '; ORT verbose op log ON' : ''}`);
+      const steps = chain && requested.startsWith('webnn') && !webnnSpec ? fallbackChain(requested) : [requested];
+      trace('plan', `requested device "${requested}"${webnnSpec ? ` with W3C options ${JSON.stringify(webnnSpec)} (no deviceType)` : ''}, dtype ${dtype}; ${steps.length > 1 ? 'explicit fallback chain: ' + steps.join(' → ') : 'no fallback chain (single device)'}${verbose ? '; ORT verbose op log ON' : ''}`);
       if (requested.startsWith('webnn') && !('ml' in navigator)) trace('webnn', 'navigator.ml is undefined in this worker → every WebNN step will fail');
       let c, device, lastErr;
       for (const [si, dev] of steps.entries()) {
         const ts = performance.now();
-        trace('step', `try ${dev}${dev.startsWith('webnn') ? ` (ORT WebNN EP, deviceType "${dev.split('-')[1] || 'default'}")` : dev === 'wasm' ? ' (ORT CPU/WASM EP)' : ''}`);
+        trace('step', `try ${dev}${dev.startsWith('webnn') ? (webnnSpec ? ' (ORT WebNN EP with our own MLContext)' : ` (ORT WebNN EP, deviceType "${dev.split('-')[1] || 'default'}")`) : dev === 'wasm' ? ' (ORT CPU/WASM EP)' : ''}`);
         try {
-          c = await load({ task, model, device: dev, dtype, id, verbose });
+          c = await load({ task, model, device: dev, dtype, id, verbose, spec: webnnSpec });
           device = dev;
           trace('step', `${dev}: session ready in ${Math.round(performance.now() - ts)} ms`);
           break;
@@ -153,8 +162,8 @@ self.onmessage = async (ev) => {
       const g = traceCtx.graphs;
       const observed = !device.startsWith('webnn') ? null : !g.length ? (c.observed ?? null) : g.some(x => x.devices === undefined || !x.devices.length) ? 'not observable' : [...new Set(g.flatMap(x => x.devices))].join('+');
       if (g.length) c.observed = observed;
-      const want = device.startsWith('webnn') ? (device.split('-')[1] || 'cpu') : null;
-      const browserNote = !want ? '' : observed === 'not observable' || observed == null ? ' · device the browser used: not observable from JS (see README)' : observed.split('+').includes(want) ? ` · browser compiled for ${observed}` : ` · browser silently fell back: ${want} → ${observed}`;
+      const want = device.startsWith('webnn') && !webnnSpec ? (device.split('-')[1] || 'cpu') : null;
+      const browserNote = webnnSpec ? (observed && observed !== 'not observable' ? ` · W3C options ${JSON.stringify(webnnSpec)} → browser compiled for ${observed}` : ` · W3C options ${JSON.stringify(webnnSpec)} → device not observable from JS`) : !want ? '' : observed === 'not observable' || observed == null ? ' · device the browser used: not observable from JS (see README)' : observed.split('+').includes(want) ? ` · browser compiled for ${observed}` : ` · browser silently fell back: ${want} → ${observed}`;
       trace('done', `requested ${requested} → ran on ${device}${device !== requested ? ' (FALLBACK by this demo\'s chain)' : ''}${browserNote}; first ${Math.round(first)} ms${avg != null ? `, avg ${Math.round(avg)} ms over ${rest.length}` : ''}`, { cls: browserNote.includes('fell back') || device !== requested ? 'bad' : observed && observed !== 'not observable' ? 'ok' : 'warn' });
       traceCtx = null;
       post({ type: 'done', id, output, firstMs: first, avgMs: avg, runs: rest.length, tokens, genMs,

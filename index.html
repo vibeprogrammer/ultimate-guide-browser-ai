@@ -86,6 +86,29 @@
       <label class="chip"><input type="radio" name="device" value="wasm"><span>WASM</span></label>
     </div>
     <div class="fields">
+      <span class="sub field" id="webnn-mode-sub" title="deviceType is what Chromium reads today; the W3C spec replaced it with powerPreference + accelerated">
+        <label for="webnn-mode">WebNN options</label>
+        <select id="webnn-mode">
+          <option value="device">deviceType (Chromium today)</option>
+          <option value="power">powerPreference (W3C spec)</option>
+        </select>
+      </span>
+      <span class="sub field" id="webnn-power-sub" style="display:none">
+        <label for="webnn-power">powerPreference</label>
+        <select id="webnn-power">
+          <option value="default">default</option>
+          <option value="high-performance">high-performance</option>
+          <option value="low-power">low-power</option>
+        </select>
+      </span>
+      <span class="sub field" id="webnn-accel-sub" style="display:none">
+        <label for="webnn-accel">accelerated</label>
+        <select id="webnn-accel">
+          <option value="">(not set)</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      </span>
       <span class="sub field" id="webnn-sub">
         <label for="webnn-device">WebNN device</label>
         <select id="webnn-device">
