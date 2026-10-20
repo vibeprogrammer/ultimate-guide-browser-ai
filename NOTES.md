@@ -57,3 +57,15 @@ Cause: `pipeline()` requests optional files that 404 online (e.g. `Xenova/resnet
 - Look: light by default, dark via prefers-color-scheme + toggle; off-white/near-black, 1 px hairlines, 4 px radius, no gradients/shadows/emoji; one cobalt accent for state; green/red/amber only for supported/not/partial. System UI stack for text, ui-monospace for every number, model id and section label (tabular numerals). All text ≥ AA contrast in both themes (measured).
 - Service worker app-shell cache bumped to webai-shell-v9.
 - Known, pre-existing: `webnn/mobilenet-v2` ships only fp16 ONNX, so dtype `auto` on wasm (→ q8) fails with "Could not locate file …model_quantized.onnx"; pick dtype fp16 for it. The UI shows the error.
+
+
+## NPU fallback tracing + device detection (20 Oct 2026)
+Maxim, 20 Oct 2026 11:38 Oslo: "when you run this demo in webnn+npu mode, can you trace fallback when npu device is not available and work happens on gpu or cpu? … also, add device availability detection - gpu, npu".
+
+- New `webnn-trace.js` (shared by page + worker): `probeDevice()` (context → 1-conv graph → `graph.devices`), `readOptionNames()` (getter probe: which MLContextOptions members the browser reads), `instrumentWebNN()` (wraps `ML.createContext`, `MLGraphBuilder` + `build`, counts ops per graph), `createOrtLogParser()` (ORT verbose → per-op WebNN vs CPU/WASM).
+- Worker: explicit chain `webnn-npu → webnn-gpu → webnn-cpu → wasm` on errors (stops on model/network errors), optional ORT verbose (`session_options.logSeverityLevel = 0`), `freeDimensionOverrides {batch_size:1,num_channels:3,height:224,width:224}` for image models on WebNN.
+- Measured, headless Chrome for Testing 156.0.8078.4, Linux, `--enable-features=WebMachineLearningNeuralNetwork` (LiteRT backend, no NPU/GPU): `createContext({deviceType:'npu'})` resolves in ~1 ms, `graph.devices = ["cpu"]`; `gpu` → `["gpu","cpu"]`; the browser reads `deviceType` + `powerPreference`, ignores `accelerated`; `opSupportLimits()` 95 ops, preferred layout nhwc.
+- ResNet-50 (fp32) on webnn-npu: before the overrides 2/122 nodes on WebNN, 120 on WASM (dynamic shapes), avg 444 ms; with them 122/122 on WebNN, avg 86 ms. MobileNet-v2 fp16: 102/102 on WebNN, avg ~32 ms.
+- Without the WebNN flag: the chain logs 3 failures (`Unsupported device: "webnn-npu"…`) and runs on WASM.
+- Unverified: Windows ML on a real NPU (expect `graph.devices` empty → "not observable", crbug.com/418031018); Edge specifics.
+- Service worker shell bumped to v10 (adds `webnn-trace.js`).

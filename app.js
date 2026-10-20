@@ -1,4 +1,5 @@
 // Web AI Playground — main thread (UI, feature detection, worker orchestration)
+import { DEVICES, probeDevice, readOptionNames } from './webnn-trace.js';
 const $ = (s) => document.querySelector(s);
 const logEl = $('#log');
 function log(...a) { const line = `[${new Date().toISOString().slice(11, 19)}] ` + a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' '); console.log(line); logEl.textContent += line + '\n'; }
@@ -62,8 +63,48 @@ async function probeWebNN() {
     } catch (e) { caps.webnn.contexts[name] = { ok: false, error: `${e.name}: ${e.message}` }; lines.push(`✗ ${name}: ${e.name}: ${e.message}`); }
   }
   const anyOk = Object.values(caps.webnn.contexts).some(c => c.ok);
+  lines.push('(✓ only means the promise resolved: unknown option names are ignored, and a missing NPU does not throw. See Device availability below.)');
   setCap('webnn', anyOk ? 'ok' : 'warn', anyOk ? 'available' : 'API present, no context', lines.join('\n'));
 }
+// ---------- device availability (NPU / GPU / CPU) ----------
+// For each WebNN device: create a context, build a 1-conv graph, read graph.devices (what the browser compiled for).
+// Plus the WebGPU adapter. Results go to the table in the Capabilities panel and to the console.
+caps.devices = {};
+async function probeDevices() {
+  const box = $('#device-table'), note = $('#device-note');
+  const rows = [];
+  if (!('ml' in navigator)) {
+    for (const d of DEVICES) caps.devices[d] = { device: d, ok: false, error: 'navigator.ml undefined', verdict: { cls: 'bad', short: 'no WebNN', text: 'WebNN is not exposed in this browser.' } };
+  } else {
+    caps.devices.options = await readOptionNames();
+    for (const d of DEVICES) caps.devices[d] = await probeDevice(d);   // sequential: keeps timings honest
+  }
+  for (const d of DEVICES) {
+    const r = caps.devices[d];
+    const ctxCell = r.ok ? `✓ ${fmtMs(r.contextMs)}` : `✗ ${r.error || ''}`;
+    const devCell = r.devices === undefined ? (r.ok ? 'n/a' : '—') : r.devices.length ? r.devices.join(' + ') : '[] (not reported)';
+    rows.push(`<tr class="${r.verdict.cls}"><th scope="row">WebNN ${d.toUpperCase()}</th><td>${ctxCell}</td><td>${r.buildMs != null ? fmtMs(r.buildMs) : '—'}</td><td>${devCell}</td><td class="v">${r.verdict.text}</td></tr>`);
+  }
+  const a = caps.webgpu.adapter;
+  const gpuCell = !caps.webgpu.present ? 'navigator.gpu undefined' : a ? `${a.vendor || '?'} · ${a.architecture || '?'}${a.description ? ' · ' + a.description : ''}` : 'no adapter';
+  const gpuCls = a && !a.isFallback ? 'ok' : a ? 'warn' : 'bad';
+  rows.push(`<tr class="${gpuCls}"><th scope="row">WebGPU</th><td>${a ? '✓ adapter' : '✗'}</td><td>—</td><td>${gpuCell}</td><td class="v">${a ? (a.isFallback ? 'Software (CPU-emulated) adapter.' : 'Hardware GPU adapter available.') : 'No WebGPU adapter.'}</td></tr>`);
+  box.querySelector('tbody').innerHTML = rows.join('');
+  const o = caps.devices.options;
+  const lim = caps.devices.cpu?.limits || caps.devices.gpu?.limits;
+  note.textContent = [
+    o ? (o.error ? `createContext(options) failed: ${o.error}` : `MLContextOptions this browser reads: ${o.read.join(', ') || 'none'}${o.ignored.length ? ` · ignores: ${o.ignored.join(', ')}` : ''}`) : 'WebNN not available.',
+    lim && !lim.error ? `opSupportLimits(): ${lim.ops} ops · preferred layout ${lim.layout || '?'}${lim.maxTensorMB ? ` · max tensor ${lim.maxTensorMB} MB` : ''} · float16 conv2d ${lim.fp16 ? 'yes' : 'no'} · int8 dequantize ${lim.int8Quant ? 'yes' : 'no'} · int4 ${lim.int4 ? 'yes' : 'no'}` : '',
+    'Probe = 1 conv2d + relu; a real model can be split differently — run it and read the fallback trace.',
+  ].filter(Boolean).join('\n');
+  // summary dots
+  const npu = caps.devices.npu, gpu = caps.devices.gpu;
+  const sum = (key, r, observedOk) => { const el = document.querySelector(`[data-sum=${key}]`); if (el) el.dataset.state = !r?.ok || r.verdict?.cls === 'bad' ? 'bad' : observedOk ? 'ok' : 'warn'; };
+  sum('npu', npu, npu?.devices?.includes('npu'));
+  sum('gpu', gpu, gpu?.devices?.includes('gpu') || (a && !a.isFallback));
+  log('device availability', Object.fromEntries(DEVICES.map(d => [d, { context: caps.devices[d].ok, contextMs: Math.round(caps.devices[d].contextMs ?? 0), graphDevices: caps.devices[d].devices, verdict: caps.devices[d].verdict.short }])), 'webgpu', a ? `${a.vendor}/${a.architecture}${a.isFallback ? ' (software)' : ''}` : 'none', 'options read', o?.read);
+}
+
 async function probeWebGPU() {
   caps.webgpu = { present: 'gpu' in navigator };
   if (!caps.webgpu.present) { setCap('webgpu', 'bad', 'not available', '`navigator.gpu` is undefined.'); return; }
@@ -106,7 +147,7 @@ async function probeBuiltin() {
     $('#prompt-mode').textContent = availability === 'unavailable' ? 'built-in model unavailable → Transformers.js fallback' : `built-in Prompt API (${availability})`;
   } catch (e) { caps.builtin.error = e.message; setCap('builtin', 'warn', 'error', e.message); $('#prompt-mode').textContent = 'Prompt API error → fallback'; }
 }
-async function probeAll() { probeWASM(); await Promise.all([probeWebNN(), probeWebGPU(), probeStorage(), probeBuiltin()]); resolveDevice(); log('capabilities', caps); }
+async function probeAll() { probeWASM(); await Promise.all([probeWebNN(), probeWebGPU(), probeStorage(), probeBuiltin()]); await probeDevices(); resolveDevice(); log('capabilities', caps); }
 $('#recheck-btn').onclick = probeAll;
 
 // ---------- device resolution ----------
@@ -122,18 +163,23 @@ function resolveDevice() {
   const mode = selectedDevice();
   $('#webnn-sub').style.display = mode === 'webnn' ? '' : 'none';
   if (mode === 'auto') {
-    const c = caps.webnn.contexts || {};
-    if (c['deviceType:npu']?.ok) resolved = { device: 'webnn-npu', reason: 'WebNN context for NPU created → webnn-npu' };
-    else if (c['deviceType:gpu']?.ok) resolved = { device: 'webnn-gpu', reason: 'WebNN GPU context created (no NPU) → webnn-gpu' };
+    // A WebNN context for "npu" is created even when there is no NPU (the browser falls back silently),
+    // so Auto trusts graph.devices when the browser reports it, and says so when it can't.
+    const d = caps.devices || {};
+    const usable = (k) => d[k]?.ok && !d[k].buildError && (!d[k].devices?.length || d[k].devices.includes(k));
+    const seen = (k) => d[k]?.devices?.includes(k);
+    if (usable('npu')) resolved = { device: 'webnn-npu', reason: seen('npu') ? 'browser compiled the probe graph for the NPU → webnn-npu' : 'WebNN NPU context created; whether the browser really uses the NPU is not observable here (see README) → webnn-npu' };
+    else if (usable('gpu')) resolved = { device: 'webnn-gpu', reason: `${d.npu?.ok ? 'NPU request fell back to ' + (d.npu.devices || []).join('+') : 'no NPU context'} → webnn-gpu` };
     else if (caps.webgpu.adapter && !caps.webgpu.adapter.isFallback) resolved = { device: 'webgpu', reason: `${caps.webnn.present ? 'WebNN present but no accelerated context' : 'no WebNN'}; WebGPU adapter found → webgpu` };
     else resolved = { device: 'wasm', reason: `${caps.webnn.present ? 'WebNN has no usable context' : 'no WebNN'}; ${caps.webgpu.adapter ? 'WebGPU adapter is a software fallback' : 'no WebGPU adapter'} → wasm` };
   } else if (mode === 'webnn') resolved = { device: webnnString($('#webnn-device').value), reason: 'chosen manually' };
   else resolved = { device: mode, reason: 'chosen manually' };
   const dtype = $('#dtype').value;
   const dtypeNote = dtype === 'auto' ? (resolved.device === 'wasm' ? 'auto → q8 (library default for wasm)' : 'auto → fp32 (library default for ' + resolved.device + ')') : dtype;
-  $('#resolved').innerHTML = `Will run with <strong>device: "${resolved.device}"</strong> → ${describeDevice(resolved.device)} · dtype: <strong>${dtypeNote}</strong><br><span>${resolved.reason}</span>`;
+  const chainNote = resolved.device.startsWith('webnn') && $('#chain').checked ? ` · on failure: ${['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].slice(Math.max(0, ['webnn-npu', 'webnn-gpu', 'webnn-cpu', 'wasm'].indexOf(resolved.device))).join(' → ')}` : '';
+  $('#resolved').innerHTML = `Will run with <strong>device: "${resolved.device}"</strong> → ${describeDevice(resolved.device)} · dtype: <strong>${dtypeNote}</strong><br><span>${resolved.reason}${chainNote}</span>`;
 }
-document.querySelectorAll('input[name=device], #webnn-device, #dtype').forEach(el => el.addEventListener('change', resolveDevice));
+document.querySelectorAll('input[name=device], #webnn-device, #dtype, #chain').forEach(el => el.addEventListener('change', resolveDevice));
 
 // ---------- worker ----------
 const worker = new Worker('./inference-worker.js', { type: 'module' });
@@ -143,6 +189,7 @@ let seq = 0;
 worker.onmessage = (e) => {
   const m = e.data;
   if (m.type === 'hello') { workerInfo = m; log('worker ready: ORT', m.ortVersion, 'webnn-in-worker', m.webnnInWorker, 'webgpu-in-worker', m.webgpuInWorker); return; }
+  if (m.type === 'trace') { addTrace(m); return; }
   const p = pending.get(m.id); if (!p) return;
   if (m.type === 'progress') p.onProgress?.(m);
   else if (m.type === 'loaded') p.onLoaded?.(m);
@@ -171,13 +218,40 @@ function progressUI(prefix) {
     hide() { box.hidden = true; },
   };
 }
+// "webnn-npu → cpu" when the browser reported a different device; "(asked webnn-npu)" when the demo's chain moved on
+function deviceLabel(m) {
+  let s = m.device;
+  if (m.observed && m.observed !== 'not observable') s += ` → ${m.observed}`;
+  else if (m.observed === 'not observable') s += ' (device not observable)';
+  if (m.requested && m.requested !== m.device) s += ` (asked ${m.requested})`;
+  return s;
+}
 function showTimings(prefix, m) {
   const dl = $(`#${prefix}-timings`); dl.innerHTML = '';
-  const rows = [['backend', m.device], ['dtype', m.resolvedDtype], ['model size', fmtMB(m.totalBytes)], ['load', fmtMs(m.loadMs)], ['1st run', fmtMs(m.firstMs)]];
+  const rows = [['backend', deviceLabel(m)], ['dtype', m.resolvedDtype], ['model size', fmtMB(m.totalBytes)], ['load', fmtMs(m.loadMs)], ['1st run', fmtMs(m.firstMs)]];
   if (m.avgMs != null) rows.push([`avg of ${m.runs}`, fmtMs(m.avgMs)]);
   if (m.tokPerSec) rows.push(['tokens/s', m.tokPerSec.toFixed(1)], ['tokens', m.tokens]);
   for (const [k, v] of rows) { const d = document.createElement('div'); d.innerHTML = `<dt>${k}</dt><dd>${v}</dd>`; dl.appendChild(d); }
 }
+
+// ---------- fallback trace ----------
+const traceEl = $('#trace');
+function addTrace(m) {
+  const line = `+${String(m.t).padStart(6)} ms  ${('[' + m.kind + ']').padEnd(8)} ${m.text}`;
+  console.log('[fallback-trace]', line);
+  const div = document.createElement('div');
+  div.className = 'tl ' + (m.data?.cls || (/FAILED|FALLBACK|REJECTED|fell back to the CPU/.test(m.text) ? 'bad' : /not observable|reusing/.test(m.text) ? 'warn' : ''));
+  div.textContent = line;
+  traceEl.appendChild(div); traceEl.scrollTop = traceEl.scrollHeight;
+}
+function traceHeader(kind, device) {
+  if (traceEl.childElementCount) traceEl.appendChild(Object.assign(document.createElement('div'), { className: 'tl sep', textContent: '' }));
+  const ua = navigator.userAgentData?.brands?.filter(b => !/Not.A.Brand/i.test(b.brand)).map(b => b.brand + ' ' + b.version).join(', ') || navigator.userAgent;
+  const dev = Object.fromEntries(DEVICES.map(d => [d, caps.devices?.[d]?.verdict?.short ?? '?']));
+  traceEl.appendChild(Object.assign(document.createElement('div'), { className: 'tl head', textContent: `=== ${new Date().toISOString()} · ${TASKS[kind].task} · ${$(TASKS[kind].modelSel).value} · requested ${device} · ${ua} · probe: npu=${dev.npu} gpu=${dev.gpu} cpu=${dev.cpu}` }));
+}
+$('#trace-copy').onclick = async () => { await navigator.clipboard?.writeText([...traceEl.children].map(d => d.textContent).join('\n')); log('trace copied'); };
+$('#trace-clear').onclick = () => { traceEl.innerHTML = ''; };
 
 // ---------- benchmark board ----------
 const bench = JSON.parse(localStorage.getItem('bench') || '[]');
@@ -274,7 +348,9 @@ let busy = false;
 async function runTask(kind, promptText) {
   if (busy) return; busy = true;
   const T = TASKS[kind]; const btn = $(T.btn); btn.disabled = true;
-  const model = $(T.modelSel).value, device = resolved.device, dtype = $('#dtype').value, runs = +$('#runs').value || 5;
+  const modelOpt = $(T.modelSel).selectedOptions[0];
+  const model = $(T.modelSel).value, device = resolved.device, runs = +$('#runs').value || 5;
+  const dtype = $('#dtype').value === 'auto' && modelOpt?.dataset.dtype ? modelOpt.dataset.dtype : $('#dtype').value;   // models that ship only one precision (webnn/mobilenet-v2: fp16)
   const pui = progressUI(kind); pui.show();
   const statusEl = $(kind === 'prompt' ? '#prompt-timings' : T.status); if (kind !== 'prompt') statusEl.textContent = `loading on ${device}…`;
   let input, transfer = [];
@@ -283,9 +359,10 @@ async function runTask(kind, promptText) {
     if (kind === 'speech') { if (!audioData) await loadSampleAudio(); input = audioData.slice(0); transfer = [input.buffer]; $('#speech-result').textContent = ''; }
     if (kind === 'prompt') { input = [{ role: 'system', content: 'You are a concise assistant.' }, { role: 'user', content: promptText }]; }
     const t0 = performance.now();
-    const res = await runInWorker({ task: T.task, model, device, dtype, input, runs }, {
+    traceHeader(kind, device);
+    const res = await runInWorker({ task: T.task, model, device, dtype, input, runs, chain: $('#chain').checked, verbose: $('#verbose-ort').checked }, {
       onProgress: (m) => pui.update(m),
-      onLoaded: (m) => { pui.done(m); if (kind !== 'prompt') statusEl.textContent = `loaded (${fmtMs(m.loadMs)}) — running ${runs + 1}×…`; },
+      onLoaded: (m) => { pui.done(m); if (m.fellBack) log(`fallback: requested ${m.requested}, running on ${m.device}`); if (kind !== 'prompt') statusEl.textContent = `loaded on ${m.device}${m.fellBack ? ' (fallback from ' + m.requested + ')' : ''} (${fmtMs(m.loadMs)}) — running ${runs + 1}×…`; },
       onRun: (m) => { if (kind !== 'prompt') statusEl.textContent = `run ${m.i + 1}/${m.total}: ${fmtMs(m.ms)}`; },
       onToken: (m) => { $('#prompt-output').textContent += m.text; },
     }, transfer);
@@ -305,7 +382,7 @@ async function runTask(kind, promptText) {
       resultText = `${res.tokens} tokens`;
     }
     showTimings(kind, res);
-    addBench({ task: T.task, model, device: res.device, dtype: res.resolvedDtype, bytes: res.totalBytes, loadMs: res.loadMs, firstMs: res.firstMs, avgMs: res.avgMs, runs: res.runs, tokPerSec: res.tokPerSec, result: resultText });
+    addBench({ task: T.task, model, device: deviceLabel(res), dtype: res.resolvedDtype, bytes: res.totalBytes, loadMs: res.loadMs, firstMs: res.firstMs, avgMs: res.avgMs, runs: res.runs, tokPerSec: res.tokPerSec, result: resultText });
     refreshCaches();
   } catch (e) {
     log('ERROR', T.task, device, e.message);
