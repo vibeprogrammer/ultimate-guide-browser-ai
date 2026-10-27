@@ -13,6 +13,32 @@ const savedTheme = localStorage.getItem('theme'); if (savedTheme) document.docum
 themeBtn.onclick = () => { const cur = document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); const t = cur === 'light' ? 'dark' : 'light'; document.documentElement.dataset.theme = t; localStorage.setItem('theme', t); };
 // capability panel: collapsed summary row on phones, expanded on wider screens
 const capsDetails = document.getElementById('caps-details'); if (capsDetails && matchMedia('(min-width: 768px)').matches) capsDetails.open = true;
+// ---------- section nav: sticky-header offset + current-section highlight ----------
+(() => {
+  const header = document.querySelector('header.top'), nav = document.getElementById('secnav');
+  if (!header || !nav) return;
+  const links = [...nav.querySelectorAll('a[href^="#"]')];
+  const secs = links.map(a => document.getElementById(a.getAttribute('href').slice(1)));
+  const setH = () => document.documentElement.style.setProperty('--header-h', header.offsetHeight + 'px');
+  setH(); if ('ResizeObserver' in window) new ResizeObserver(setH).observe(header); else addEventListener('resize', setH);
+  let cur = -1, raf = 0, pin = -1;   // pin = the link just clicked, kept until the user scrolls by hand (short last sections can't reach the top)
+  const mark = () => {
+    raf = 0;
+    const y = header.offsetHeight + 24; let i = 0, best = -Infinity;
+    // side-by-side panels share a top: the earlier one wins the tie
+    secs.forEach((s, k) => { const t = s ? s.getBoundingClientRect().top : Infinity; if (t <= y && t > best + 1) { i = k; best = t; } });
+    if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) i = secs.length - 1;
+    if (pin >= 0) i = pin;
+    if (i === cur) return; cur = i;
+    links.forEach((a, k) => { a.classList.toggle('active', k === i); if (k === i) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); });
+    const a = links[i]; if (nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: a.offsetLeft - (nav.clientWidth - a.offsetWidth) / 2, behavior: 'smooth' });
+  };
+  addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(mark); }, { passive: true });
+  links.forEach((a, k) => a.addEventListener('click', () => { const d = secs[k]?.querySelector(':scope > details'); if (d && !d.open) d.open = true; pin = k; mark(); }));
+  const unpin = () => { if (pin >= 0) { pin = -1; if (!raf) raf = requestAnimationFrame(mark); } };
+  ['wheel', 'touchmove', 'keydown'].forEach(ev => addEventListener(ev, unpin, { passive: true }));
+  mark();
+})();
 function updateOnline() { const p = $('#pill-online'); p.textContent = navigator.onLine ? 'online' : 'OFFLINE'; p.className = 'pill ' + (navigator.onLine ? 'ok' : 'bad'); }
 addEventListener('online', updateOnline); addEventListener('offline', updateOnline); updateOnline();
 
